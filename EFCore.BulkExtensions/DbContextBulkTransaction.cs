@@ -1,27 +1,55 @@
-﻿using EFCore.BulkExtensions.SqlAdapters;
-using Microsoft.EntityFrameworkCore;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using EFCore.BulkExtensions.SqlAdapters;
+using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.BulkExtensions;
 
 internal static class DbContextBulkTransaction
 {
-    public static void Execute<T>(DbContext context, Type? type, IList<T> entities, OperationType operationType, BulkConfig? bulkConfig, Action<decimal>? progress) where T : class
+    public static void Execute<T>(DbContext context, Type? type, IList<T> entities, OperationType operationType, BulkConfig? bulkConfig, Action<decimal>? progress)
+        where T : class
     {
         type ??= typeof(T);
+
+        if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            switch (operationType)
+            {
+                case OperationType.Insert:
+                    context.AddRange(entities);
+                    break;
+                case OperationType.InsertOrUpdate:
+                case OperationType.InsertOrUpdateOrDelete:
+                case OperationType.Update:
+                    context.UpdateRange(entities);
+                    break;
+                case OperationType.Delete:
+                    context.RemoveRange(entities);
+                    break;
+                case OperationType.Read:
+                    break;
+                case OperationType.Truncate:
+                    context.Set<T>().RemoveRange(context.Set<T>());
+                    break;
+            }
+            context.SaveChanges();
+            return;
+        }
 
         CheckForMySQLUnsupportedFeatures(context, operationType, bulkConfig);
 
         using (ActivitySources.StartExecuteActivity(operationType, entities.Count))
         {
-            if (entities.Count == 0 &&
-                operationType != OperationType.InsertOrUpdateOrDelete &&
-                operationType != OperationType.Truncate &&
-                operationType != OperationType.SaveChanges &&
-                (bulkConfig == null || bulkConfig.CustomSourceTableName == null))
+            if (
+                entities.Count == 0
+                && operationType != OperationType.InsertOrUpdateOrDelete
+                && operationType != OperationType.Truncate
+                && operationType != OperationType.SaveChanges
+                && (bulkConfig == null || bulkConfig.CustomSourceTableName == null)
+            )
             {
                 return;
             }
@@ -66,24 +94,58 @@ internal static class DbContextBulkTransaction
 
         // if (SqlAdaptersMapping.GetDatabaseType(context) == DbServerType.MySQL)
         // {
-            // Output identity is not supported for the MySQL
-            // https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/
+        // Output identity is not supported for the MySQL
+        // https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/
 
-            // if (bulkConfig != null && operationType == OperationType.SaveChanges)
-            // {
-            //     bulkConfig.OnSaveChangesSetFK = false;
-            // }
-            //
-            // if (bulkConfig?.SetOutputIdentity == true)
-            // {
-            //     throw new NotSupportedException("SetOutputIdentity is not supported for MySQL (see issue https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/90) ");
-            // }
+        // if (bulkConfig != null && operationType == OperationType.SaveChanges)
+        // {
+        //     bulkConfig.OnSaveChangesSetFK = false;
+        // }
+        //
+        // if (bulkConfig?.SetOutputIdentity == true)
+        // {
+        //     throw new NotSupportedException("SetOutputIdentity is not supported for MySQL (see issue https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/90) ");
+        // }
         // }
     }
 
-    public static async Task ExecuteAsync<T>(DbContext context, Type? type, IList<T> entities, OperationType operationType, BulkConfig? bulkConfig, Action<decimal>? progress, CancellationToken cancellationToken = default) where T : class
+    public static async Task ExecuteAsync<T>(
+        DbContext context,
+        Type? type,
+        IList<T> entities,
+        OperationType operationType,
+        BulkConfig? bulkConfig,
+        Action<decimal>? progress,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         type ??= typeof(T);
+
+        if (context.Database.ProviderName == "Microsoft.EntityFrameworkCore.InMemory")
+        {
+            switch (operationType)
+            {
+                case OperationType.Insert:
+                    await context.AddRangeAsync(entities, cancellationToken).ConfigureAwait(false);
+                    break;
+                case OperationType.InsertOrUpdate:
+                case OperationType.InsertOrUpdateOrDelete:
+                case OperationType.Update:
+                    context.UpdateRange(entities);
+                    break;
+                case OperationType.Delete:
+                    context.RemoveRange(entities);
+                    break;
+                case OperationType.Read:
+                    break;
+                case OperationType.Truncate:
+                    context.Set<T>().RemoveRange(context.Set<T>());
+                    break;
+            }
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
 
         using (ActivitySources.StartExecuteActivity(operationType, entities.Count))
         {

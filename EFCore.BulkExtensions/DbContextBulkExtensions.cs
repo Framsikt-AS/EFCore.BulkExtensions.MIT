@@ -1,8 +1,8 @@
-﻿using Microsoft.EntityFrameworkCore;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.EntityFrameworkCore;
 
 namespace EFCore.BulkExtensions;
 
@@ -16,7 +16,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert data
     /// </summary>
-    public static void BulkInsert<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkInsert<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, entities, OperationType.Insert, bulkConfig, progress);
     }
@@ -24,7 +25,27 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert data
     /// </summary>
-    public static Task BulkInsertAsync<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static void BulkInsert<T>(this DbContext context, IEnumerable<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class => BulkInsert(context, entities.EnsureList(), bulkConfig, progress, type);
+
+    /// <summary>
+    /// Extension method to single insert data
+    /// </summary>
+    public static void SingleInsert<T>(this DbContext context, T entity, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class => BulkInsert(context, [entity], bulkConfig, progress, type);
+
+    /// <summary>
+    /// Extension method to bulk insert data
+    /// </summary>
+    public static Task BulkInsertAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.Insert, bulkConfig, progress, cancellationToken);
     }
@@ -32,7 +53,34 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert data
     /// </summary>
-    public static void BulkInsert<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static Task BulkInsertAsync<T>(
+        this DbContext context,
+        IEnumerable<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class => BulkInsertAsync(context, entities.EnsureList(), bulkConfig, progress, type, cancellationToken);
+
+    /// <summary>
+    /// Extension method to single insert data
+    /// </summary>
+    public static Task SingleInsertAsync<T>(
+        this DbContext context,
+        T entity,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class => BulkInsertAsync(context, [entity], bulkConfig, progress, type, cancellationToken);
+
+    /// <summary>
+    /// Extension method to bulk insert data
+    /// </summary>
+    public static void BulkInsert<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -42,12 +90,58 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert data
     /// </summary>
-    public static Task BulkInsertAsync<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static void BulkInsert<T>(this DbContext context, IEnumerable<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class => BulkInsert(context, entities.EnsureList(), bulkAction, progress, type);
+
+    /// <summary>
+    /// Extension method to single insert data
+    /// </summary>
+    public static void SingleInsert<T>(this DbContext context, T entity, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class => BulkInsert(context, [entity], bulkAction, progress, type);
+
+    /// <summary>
+    /// Extension method to bulk insert data
+    /// </summary>
+    public static Task BulkInsertAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.Insert, bulkConfig, progress, cancellationToken);
     }
+
+    /// <summary>
+    /// Extension method to bulk insert data
+    /// </summary>
+    public static Task BulkInsertAsync<T>(
+        this DbContext context,
+        IEnumerable<T> entities,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class => BulkInsertAsync(context, entities.EnsureList(), bulkAction, progress, type, cancellationToken);
+
+    /// <summary>
+    /// Extension method to single insert data
+    /// </summary>
+    public static Task SingleInsertAsync<T>(
+        this DbContext context,
+        T entity,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class => BulkInsertAsync(context, [entity], bulkAction, progress, type, cancellationToken);
     #endregion
 
     // InsertOrUpdate methods
@@ -55,7 +149,8 @@ public static class DbContextBulkExtensions
     /// Extension method to bulk insert or update data
     /// </summary>
     #region BulkInsertOrUpdate
-    public static void BulkInsertOrUpdate<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkInsertOrUpdate<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, entities, OperationType.InsertOrUpdate, bulkConfig, progress);
     }
@@ -71,7 +166,15 @@ public static class DbContextBulkExtensions
     /// <param name="type"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public static Task BulkInsertOrUpdateAsync<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkInsertOrUpdateAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.InsertOrUpdate, bulkConfig, progress, cancellationToken);
     }
@@ -85,7 +188,8 @@ public static class DbContextBulkExtensions
     /// <param name="bulkAction"></param>
     /// <param name="progress"></param>
     /// <param name="type"></param>
-    public static void BulkInsertOrUpdate<T>(this DbContext context, IList<T> entities, Action<BulkConfig> bulkAction, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkInsertOrUpdate<T>(this DbContext context, IList<T> entities, Action<BulkConfig> bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -103,7 +207,15 @@ public static class DbContextBulkExtensions
     /// <param name="type"></param>
     /// <param name="cancellationToken"></param>
     /// <returns></returns>
-    public static Task BulkInsertOrUpdateAsync<T>(this DbContext context, IList<T> entities, Action<BulkConfig> bulkAction, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkInsertOrUpdateAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        Action<BulkConfig> bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -117,7 +229,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert, update and delete data
     /// </summary>
-    public static void BulkInsertOrUpdateOrDelete<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkInsertOrUpdateOrDelete<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, entities, OperationType.InsertOrUpdateOrDelete, bulkConfig, progress);
     }
@@ -125,7 +238,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert, update and delete data
     /// </summary>
-    public static Task BulkInsertOrUpdateOrDeleteAsync<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkInsertOrUpdateOrDeleteAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.InsertOrUpdateOrDelete, bulkConfig, progress, cancellationToken);
     }
@@ -133,7 +254,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert, update and delete data
     /// </summary>
-    public static void BulkInsertOrUpdateOrDelete<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkInsertOrUpdateOrDelete<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -143,7 +265,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk insert, update and delete data
     /// </summary>
-    public static Task BulkInsertOrUpdateOrDeleteAsync<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkInsertOrUpdateOrDeleteAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -157,7 +287,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk update data
     /// </summary>
-    public static void BulkUpdate<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkUpdate<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, entities, OperationType.Update, bulkConfig, progress);
     }
@@ -165,7 +296,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk update data
     /// </summary>
-    public static Task BulkUpdateAsync<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkUpdateAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.Update, bulkConfig, progress, cancellationToken);
     }
@@ -173,7 +312,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk update data
     /// </summary>
-    public static void BulkUpdate<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkUpdate<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -183,7 +323,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk update data
     /// </summary>
-    public static Task BulkUpdateAsync<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkUpdateAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -196,7 +344,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk delete data
     /// </summary>
-    public static void BulkDelete<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkDelete<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, entities, OperationType.Delete, bulkConfig, progress);
     }
@@ -204,7 +353,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk delete data
     /// </summary>
-    public static Task BulkDeleteAsync<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkDeleteAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.Delete, bulkConfig, progress, cancellationToken);
     }
@@ -212,7 +369,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk delete data
     /// </summary>
-    public static void BulkDelete<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkDelete<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -222,7 +380,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk delete data
     /// </summary>
-    public static Task BulkDeleteAsync<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkDeleteAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -236,7 +402,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk read data
     /// </summary>
-    public static void BulkRead<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkRead<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, entities, OperationType.Read, bulkConfig, progress);
     }
@@ -244,7 +411,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk read data
     /// </summary>
-    public static Task BulkReadAsync<T>(this DbContext context, IList<T> entities, BulkConfig? bulkConfig = null, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkReadAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        BulkConfig? bulkConfig = null,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, entities, OperationType.Read, bulkConfig, progress, cancellationToken);
     }
@@ -252,7 +427,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk read data
     /// </summary>
-    public static void BulkRead<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null) where T : class
+    public static void BulkRead<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -262,7 +438,15 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to bulk read data
     /// </summary>
-    public static Task BulkReadAsync<T>(this DbContext context, IList<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task BulkReadAsync<T>(
+        this DbContext context,
+        IList<T> entities,
+        Action<BulkConfig>? bulkAction,
+        Action<decimal>? progress = null,
+        Type? type = null,
+        CancellationToken cancellationToken = default
+    )
+        where T : class
     {
         BulkConfig bulkConfig = new();
         bulkAction?.Invoke(bulkConfig);
@@ -275,7 +459,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to truncate table
     /// </summary>
-    public static void Truncate<T>(this DbContext context, Type? type = null) where T : class
+    public static void Truncate<T>(this DbContext context, Type? type = null)
+        where T : class
     {
         DbContextBulkTransaction.Execute(context, type, new List<T>(), OperationType.Truncate, null, null);
     }
@@ -283,7 +468,8 @@ public static class DbContextBulkExtensions
     /// <summary>
     /// Extension method to truncate table
     /// </summary>
-    public static Task TruncateAsync<T>(this DbContext context, Type? type = null, CancellationToken cancellationToken = default) where T : class
+    public static Task TruncateAsync<T>(this DbContext context, Type? type = null, CancellationToken cancellationToken = default)
+        where T : class
     {
         return DbContextBulkTransaction.ExecuteAsync(context, type, new List<T>(), OperationType.Truncate, null, null, cancellationToken);
     }
