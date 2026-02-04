@@ -1,24 +1,24 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.4.32804.182
+# Visual Studio Version 18
+VisualStudioVersion = 18.3.11426.168 d18.3
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EFCore.BulkExtensions.v8", "NugetProjects\EFCore.BulkExtensions.v8\EFCore.BulkExtensions.v8.csproj", "{926B6875-9641-4273-8A31-092527B5DFCD}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Items", "Items", "{214076BE-7DD8-4AFB-8B34-299A1D5DCB3C}"
 	ProjectSection(SolutionItems) = preProject
-		LICENSE = LICENSE
-		EFCoreBulk2.png = EFCoreBulk2.png
-		EFCoreBulk.png = EFCoreBulk.png
-		NugetsReleasePaths.txt = NugetsReleasePaths.txt
-		README.md = README.md
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		CODE_OF_CONDUCT.md = CODE_OF_CONDUCT.md
 		CONTRIBUTING.md = CONTRIBUTING.md
 		CopyFilesPerProviderNugets.bat = CopyFilesPerProviderNugets.bat
-		CODE_OF_CONDUCT.md = CODE_OF_CONDUCT.md
-		.gitignore = .gitignore
-		.editorconfig = .editorconfig
-		global.json = global.json
 		Directory.Build.props = Directory.Build.props
+		EFCoreBulk.png = EFCoreBulk.png
+		EFCoreBulk2.png = EFCoreBulk2.png
+		global.json = global.json
+		LICENSE = LICENSE
+		NugetsReleasePaths.txt = NugetsReleasePaths.txt
+		README.md = README.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "NugetProjects", "NugetProjects", "{498FB27E-CE77-415B-B59A-5F271F876F5D}"
@@ -320,5 +320,8 @@ Global
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {F6CFFD1D-D456-4A8F-86FC-7CF2C893AB08}
+	EndGlobalSection
+	GlobalSection(SharedMSBuildProjectFiles) = preSolution
+		EFCore.BulkExtensions\EFCore.BulkExtensions.projitems*{30fccef4-412f-4988-be6f-88acec5c74bb}*SharedItemsImports = 13
 	EndGlobalSection
 EndGlobal

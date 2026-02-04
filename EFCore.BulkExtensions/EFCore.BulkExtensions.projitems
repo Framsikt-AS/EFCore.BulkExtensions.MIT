@@ -22,6 +22,7 @@
     <Compile Include="$(MSBuildThisFileDirectory)FastProperty.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)GraphUtil.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Helpers\GenericsHelpers.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)IEnumerableExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)InvalidBulkConfigException.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IQueryableBatchExtensions.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)IQueryableExtensions.cs" />
