@@ -227,7 +227,7 @@ public static class DbContextBulkExtensions
     /// <param name="progress"></param>
     /// <param name="type"></param>
     public static void BulkInsertOrUpdate<T>(this DbContext context, IEnumerable<T> entities, Action<BulkConfig> bulkAction, Action<decimal>? progress = null, Type? type = null)
-        where T : class => BulkInsertOrUpdateAsync(context, entities.EnsureList(), bulkAction, progress, type);
+        where T : class => BulkInsertOrUpdate(context, entities.EnsureList(), bulkAction, progress, type);
 
     /// <summary>
     /// Extension method to bulk insert or update data
@@ -339,7 +339,7 @@ public static class DbContextBulkExtensions
     /// Extension method to bulk insert, update and delete data
     /// </summary>
     public static void BulkInsertOrUpdateOrDelete<T>(this DbContext context, IEnumerable<T> entities, Action<BulkConfig>? bulkAction, Action<decimal>? progress = null, Type? type = null)
-        where T : class => BulkInsertOrUpdateOrDeleteAsync(context, entities.EnsureList(), bulkAction, progress, type);
+        where T : class => BulkInsertOrUpdateOrDelete(context, entities.EnsureList(), bulkAction, progress, type);
 
     /// <summary>
     /// Extension method to bulk insert, update and delete data
