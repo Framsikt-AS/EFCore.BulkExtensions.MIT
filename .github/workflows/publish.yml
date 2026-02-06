@@ -114,6 +114,9 @@ jobs:
             8.x
             9.x
             10.x
+          source-url: https://framsiktdevelopment.pkgs.visualstudio.com/_packaging/common-packages/nuget/v3/index.json
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.AZURE_ARTIFACTS_PAT }}
       - name: Tag commit v8
         uses: EndBug/latest-tag@latest
         with:
@@ -133,5 +136,5 @@ jobs:
       - name: Publish NuGet package
         run: |
           foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
-              dotnet nuget push $file --api-key "${{ secrets.NUGET_APIKEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
+              dotnet nuget push --source "common-packages" --api-key az --skip-duplicate $file
           }
