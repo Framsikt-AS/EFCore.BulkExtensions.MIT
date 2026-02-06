@@ -138,3 +138,6 @@ jobs:
           foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
               dotnet nuget push --source "common-packages" --api-key az --skip-duplicate $file
           }
+        env:
+          # This is the "magic" that makes the push work without a password prompt
+          NUGET_AUTH_TOKEN: ${{ secrets.AZURE_ARTIFACTS_PAT }}
