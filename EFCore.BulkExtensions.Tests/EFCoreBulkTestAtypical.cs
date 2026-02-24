@@ -1,10 +1,10 @@
-using EFCore.BulkExtensions.SqlAdapters;
-using Microsoft.EntityFrameworkCore;
-using NetTopologySuite.Geometries;
 using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
+using EFCore.BulkExtensions.SqlAdapters;
+using Microsoft.EntityFrameworkCore;
+using NetTopologySuite.Geometries;
 using Xunit;
 
 namespace EFCore.BulkExtensions.Tests;
@@ -24,7 +24,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         context.Documents.BatchDelete();
         bool isSqlite = dbServer == DbServerType.SQLite;
 
-        var entities = new List<Document>() 
+        var entities = new List<Document>()
         {
             new Document { DocumentId = Guid.Parse("15E5936C-8021-45F4-A055-2BE89B065D9E"), Content = "Info " + 1 },
             new Document { DocumentId = Guid.Parse("00C69E47-A08F-49E0-97A6-56C62C9BB47E"), Content = "Info " + 2 },
@@ -81,11 +81,11 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         {
             Name = "Software",
             Divisions = new List<Division>
-                {
-                    new Division{Name = "Student A"},
-                    new Division{Name = "Student B"},
-                    new Division{Name = "Student C"},
-                }
+            {
+                new Division { Name = "Student A" },
+                new Division { Name = "Student B" },
+                new Division { Name = "Student C" },
+            },
         };
 
         context.BulkInsert(new List<Department> { department }, new BulkConfig { IncludeGraph = true });
@@ -107,22 +107,29 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         for (int i = 1; i <= 4; i++)
         {
             int j = i;
-            if (i == 1) j = 2;
-            if (i == 2) j = 1;
-            entities.Add(new Item
-            {
-                Name = "name " + j,
-                Description = "info x " + j,
-            });
+            if (i == 1)
+                j = 2;
+            if (i == 2)
+                j = 1;
+            entities.Add(new Item { Name = "name " + j, Description = "info x " + j });
         }
-        entities.Add(new Item
-        {
-            Name = "name 2",
-            Quantity = 1,
-            Description = "info x 5",
-        });
+        entities.Add(
+            new Item
+            {
+                Name = "name 2",
+                Quantity = 1,
+                Description = "info x 5",
+            }
+        );
 
-        context.BulkInsertOrUpdate(entities, new BulkConfig { SetOutputIdentity = true, UpdateByProperties = new List<string> { nameof(Item.Name), nameof(Item.Quantity) } });
+        context.BulkInsertOrUpdate(
+            entities,
+            new BulkConfig
+            {
+                SetOutputIdentity = true,
+                UpdateByProperties = new List<string> { nameof(Item.Name), nameof(Item.Quantity) },
+            }
+        );
         Assert.Equal(2, entities[0].ItemId);
     }
 
@@ -139,10 +146,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<Document>();
         for (int i = 1; i <= EntitiesNumber; i++)
         {
-            var entity = new Document
-            {
-                Content = "Info " + i
-            };
+            var entity = new Document { Content = "Info " + i };
             if (isSqlite)
             {
                 entity.DocumentId = Guid.NewGuid();
@@ -160,10 +164,11 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         Assert.Equal("DefaultData", firstDocument.Tag);
 
         firstDocument.Tag = null;
-        var upsertList = new List<Document> {
+        var upsertList = new List<Document>
+        {
             //firstDocument, // GetPropertiesWithDefaultValue .SelectMany(
             new Document { Content = "Info " + (count + 1) }, // to test adding new with InsertOrUpdate (entity having Guid DbGenerated)
-            new Document { Content = "Info " + (count + 2) }
+            new Document { Content = "Info " + (count + 2) },
         };
         if (isSqlite)
         {
@@ -223,10 +228,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<File>();
         for (int i = 1; i <= EntitiesNumber; i++)
         {
-            var entity = new File
-            {
-                Description = "Some data " + i
-            };
+            var entity = new File { Description = "Some data " + i };
             entities.Add(entity);
         }
         context.BulkInsert(entities, bulkAction => bulkAction.SetOutputIdentity = true); // example of setting BulkConfig with Action argument
@@ -235,12 +237,9 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entitiesRead = new List<File>
         {
             new File { Description = "Some data 1" },
-            new File { Description = "Some data 2" }
+            new File { Description = "Some data 2" },
         };
-        context.BulkRead(entitiesRead, new BulkConfig
-        {
-            UpdateByProperties = new List<string> { nameof(File.Description) }
-        });
+        context.BulkRead(entitiesRead, new BulkConfig { UpdateByProperties = new List<string> { nameof(File.Description) } });
         Assert.Equal(1, entitiesRead.First().FileId);
         Assert.NotNull(entitiesRead.First().VersionChange);
 
@@ -274,7 +273,6 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
             // 3. Update them again
 
             // 4. Skip them and leave it unchanged
-
         }
         else
         {
@@ -320,7 +318,13 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = context.UserRoles.ToList();
         Assert.Equal(EntitiesNumber, entities.Count);
 
-        context.BulkInsertOrUpdate(entitiesToUpsert, new BulkConfig { PropertiesToInclude = new List<string> { nameof(UserRole.UserId), nameof(UserRole.RoleId) } });
+        context.BulkInsertOrUpdate(
+            entitiesToUpsert,
+            new BulkConfig
+            {
+                PropertiesToInclude = new List<string> { nameof(UserRole.UserId), nameof(UserRole.RoleId) },
+            }
+        );
         var entitiesFinal = context.UserRoles.ToList();
         Assert.Equal(EntitiesNumber + 1, entitiesFinal.Count);
     }
@@ -339,11 +343,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entitiesToInsert = new List<Student>();
         for (int i = 1; i <= EntitiesNumber; i++)
         {
-            entitiesToInsert.Add(new Student
-            {
-                Name = "name " + i,
-                Subject = "Math"
-            });
+            entitiesToInsert.Add(new Student { Name = "name " + i, Subject = "Math" });
         }
         context.Students.AddRange(entitiesToInsert); // adding to Context so that Shadow property 'Discriminator' gets set
         context.BulkInsert(entitiesToInsert);
@@ -352,18 +352,17 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entitiesToInsertOrUpdate = new List<Student>();
         for (int i = 1; i <= EntitiesNumber / 2; i += 2)
         {
-            entitiesToInsertOrUpdate.Add(new Student
-            {
-                Name = "name " + i,
-                Subject = "Math Upd"
-            });
+            entitiesToInsertOrUpdate.Add(new Student { Name = "name " + i, Subject = "Math Upd" });
         }
         context.Students.AddRange(entitiesToInsertOrUpdate); // adding to Context so that Shadow property 'Discriminator' gets set
-        context.BulkInsertOrUpdate(entitiesToInsertOrUpdate, new BulkConfig
-        {
-            UpdateByProperties = new List<string> { nameof(Student.Name) },
-            PropertiesToExclude = new List<string> { nameof(Student.PersonId) },
-        });
+        context.BulkInsertOrUpdate(
+            entitiesToInsertOrUpdate,
+            new BulkConfig
+            {
+                UpdateByProperties = new List<string> { nameof(Student.Name) },
+                PropertiesToExclude = new List<string> { nameof(Student.PersonId) },
+            }
+        );
 
         // TEST
         var entities = context.Students.ToList();
@@ -386,12 +385,14 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entitiesToInsert = new List<Info>();
         for (int i = 1; i <= EntitiesNumber; i++)
         {
-            entitiesToInsert.Add(new Info
-            {
-                Message = "Msg " + i,
-                ConvertedTime = dateTime,
-                InfoType = InfoType.InfoTypeA
-            });
+            entitiesToInsert.Add(
+                new Info
+                {
+                    Message = "Msg " + i,
+                    ConvertedTime = dateTime,
+                    InfoType = InfoType.InfoTypeA,
+                }
+            );
         }
         context.BulkInsert(entitiesToInsert);
 
@@ -412,10 +413,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
             command.CommandText = $"SELECT TOP 1 * FROM {nameof(Info)} ORDER BY {nameof(Info.InfoId)} DESC";
             var reader = command.ExecuteReader();
             reader.Read();
-            var row = new Info()
-            {
-                ConvertedTime = reader.Field<DateTime>(nameof(Info.ConvertedTime))
-            };
+            var row = new Info() { ConvertedTime = reader.Field<DateTime>(nameof(Info.ConvertedTime)) };
             Assert.Equal(row.ConvertedTime, dateTime.AddDays(1));
         }
     }
@@ -447,40 +445,36 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<ChangeLog>();
         for (int i = 1; i <= EntitiesNumber; i++)
         {
-            entities.Add(new ChangeLog
-            {
-                Description = "Dsc " + i,
-                Audit = new Audit
+            entities.Add(
+                new ChangeLog
                 {
-                    ChangedBy = "User" + 1,
-                    ChangedTime = DateTime.Now,
-                    InfoType = InfoType.InfoTypeA
-                },
-                AuditExtended = new AuditExtended
-                {
-                    CreatedBy = "UserS" + 1,
-                    Remark = "test",
-                    CreatedTime = DateTime.Now
-                },
-                AuditExtendedSecond = new AuditExtended
-                {
-                    CreatedBy = "UserS" + 1,
-                    Remark = "sec",
-                    CreatedTime = DateTime.Now
+                    Description = "Dsc " + i,
+                    Audit = new Audit
+                    {
+                        ChangedBy = "User" + 1,
+                        ChangedTime = DateTime.Now,
+                        InfoType = InfoType.InfoTypeA,
+                    },
+                    AuditExtended = new AuditExtended
+                    {
+                        CreatedBy = "UserS" + 1,
+                        Remark = "test",
+                        CreatedTime = DateTime.Now,
+                    },
+                    AuditExtendedSecond = new AuditExtended
+                    {
+                        CreatedBy = "UserS" + 1,
+                        Remark = "sec",
+                        CreatedTime = DateTime.Now,
+                    },
                 }
-            });
+            );
         }
         context.BulkInsert(entities);
 
         if (dbServer == DbServerType.SQLServer || dbServer == DbServerType.PostgreSQL)
         {
-            context.BulkRead(
-                entities,
-                new BulkConfig
-                {
-                    UpdateByProperties = new List<string> { nameof(Item.Description) }
-                }
-            );
+            context.BulkRead(entities, new BulkConfig { UpdateByProperties = new List<string> { nameof(Item.Description) } });
             Assert.Equal(2, entities[1].ChangeLogId);
         }
 
@@ -521,27 +515,23 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<Tracker>();
         for (int i = 1; i <= EntitiesNumber; i++)
         {
-            entities.Add(new Tracker
-            {
-                Description = "Dsc " + i,
-                Location = new TrackerLocation()
+            entities.Add(
+                new Tracker
                 {
-                    LocationName = "Anywhere",
-                    Location = new Point(0, 0) { SRID = 4326 }
+                    Description = "Dsc " + i,
+                    Location = new TrackerLocation()
+                    {
+                        LocationName = "Anywhere",
+                        Location = new Point(0, 0) { SRID = 4326 },
+                    },
                 }
-            });
+            );
         }
         context.BulkInsert(entities);
 
         if (dbServer == DbServerType.SQLServer || dbServer == DbServerType.PostgreSQL)
         {
-            context.BulkRead(
-                entities,
-                new BulkConfig
-                {
-                    UpdateByProperties = new List<string> { nameof(Item.Description) }
-                }
-            );
+            context.BulkRead(entities, new BulkConfig { UpdateByProperties = new List<string> { nameof(Item.Description) } });
             Assert.Equal(2, entities[1].TrackerId);
         }
 
@@ -577,7 +567,6 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         }
         //context.BulkDelete(context.Items.ToList()); // On table with FK Truncate does not work
 
-
         if (!context.Items.Any())
         {
             for (int i = 1; i <= 10; ++i)
@@ -590,7 +579,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
                     Quantity = i % 10,
                     Price = i / (i % 5 + 1),
                     TimeUpdated = DateTime.Now,
-                    ItemHistories = new List<ItemHistory>()
+                    ItemHistories = new List<ItemHistory>(),
                 };
 
                 context.Items.Add(entity);
@@ -602,11 +591,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<ItemLink>();
         for (int i = 0; i < EntitiesNumber; i++)
         {
-            entities.Add(new ItemLink
-            {
-                ItemLinkId = 0,
-                Item = items[i % items.Count]
-            });
+            entities.Add(new ItemLink { ItemLinkId = 0, Item = items[i % items.Count] });
         }
         context.BulkInsert(entities);
 
@@ -646,7 +631,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
             new Item { ItemId = 0, Name = "name " + 11 + " New" },
             new Item { ItemId = 6, Name = "name " + 6 + " Updated" },
             new Item { ItemId = 5, Name = "name " + 5 + " Updated" },
-            new Item { ItemId = 0, Name = "name " + 12 + " New" }
+            new Item { ItemId = 0, Name = "name " + 12 + " New" },
         };
         context.BulkInsertOrUpdate(entities, new BulkConfig() { SetOutputIdentity = true });
 
@@ -678,17 +663,9 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         {
             if (i <= 10)
             {
-                list1.Add(new Modul
-                {
-                    Code = i.ToString(),
-                    Name = "Name " + i.ToString("00"),
-                });
+                list1.Add(new Modul { Code = i.ToString(), Name = "Name " + i.ToString("00") });
             }
-            list2.Add(new Modul
-            {
-                Code = i.ToString(),
-                Name = "Name " + i.ToString("00"),
-            });
+            list2.Add(new Modul { Code = i.ToString(), Name = "Name " + i.ToString("00") });
         }
         context.BulkInsert(list1);
         list2[0].Name = "UPD";
@@ -710,10 +687,10 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         context.BulkDelete(list);
 
         var mammalList = new List<Mammal>()
-            {
-                new Mammal { Name = "Cat" },
-                new Mammal { Name = "Dog" }
-            };
+        {
+            new Mammal { Name = "Cat" },
+            new Mammal { Name = "Dog" },
+        };
         var bulkConfig = new BulkConfig { SetOutputIdentity = true };
         context.BulkInsert(mammalList, bulkConfig, type: typeof(Animal));
 
@@ -729,13 +706,15 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         context.BulkDelete(context.Addresses.ToList());
 
-        var entities = new List<Address> {
-                new Address {
-                    Street = "Some Street nn",
-                    LocationGeography = new Point(52, 13),
-                    LocationGeometry = new Point(52, 13),
-                }
-            };
+        var entities = new List<Address>
+        {
+            new Address
+            {
+                Street = "Some Street nn",
+                LocationGeography = new Point(52, 13),
+                LocationGeometry = new Point(52, 13),
+            },
+        };
 
         context.BulkInsertOrUpdate(entities);
     }
@@ -753,12 +732,14 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         using (var context = new TestContext(ContextUtil.GetOptions()))
         {
-            var entities = new List<Address> {
-                new Address {
+            var entities = new List<Address>
+            {
+                new Address
+                {
                     Street = "Some Street nn",
                     LocationGeography = point,
-                    LocationGeometry = point
-                }
+                    LocationGeometry = point,
+                },
             };
 
             context.BulkInsertOrUpdate(entities);
@@ -772,10 +753,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
             Assert.Equal(point.X, address.LocationGeometry.Coordinate.X);
             Assert.Equal(point.Y, address.LocationGeometry.Coordinate.Y);
         }
-
     }
-
-
 
     [Fact]
     private void HierarchyIdColumnTest()
@@ -789,12 +767,9 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         using (var context = new TestContext(ContextUtil.GetOptions()))
         {
             var nodeIdAsString = "/1/";
-            var entities = new List<Category> {
-                new Category
-                {
-                    Name = "Root Element",
-                    HierarchyDescription = HierarchyId.Parse(nodeIdAsString)
-                }
+            var entities = new List<Category>
+            {
+                new Category { Name = "Root Element", HierarchyDescription = HierarchyId.Parse(nodeIdAsString) },
             };
 
             context.BulkInsertOrUpdate(entities);
@@ -814,13 +789,10 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         using (var context = new TestContext(ContextUtil.GetOptions()))
         {
-            var entities = new List<Category> {
-                new Category
-                {
-                    Name = "Root Element",
-                    HierarchyDescription = HierarchyId.Parse(nodeIdAsString)
-                }
-        };
+            var entities = new List<Category>
+            {
+                new Category { Name = "Root Element", HierarchyDescription = HierarchyId.Parse(nodeIdAsString) },
+            };
             context.BulkInsertOrUpdate(entities);
         }
 
@@ -829,7 +801,6 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
             var category = context.Categories.Single();
             Assert.Equal(nodeIdAsString, category.HierarchyDescription.ToString());
         }
-
     }
 
     [Fact]
@@ -845,13 +816,10 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         using (var context = new TestContext(ContextUtil.GetOptions()))
         {
-            var entities = new List<Category> {
-                new Category
-                {
-                    Name = "Deep Element",
-                    HierarchyDescription = HierarchyId.Parse(nodeIdAsString)
-                }
-        };
+            var entities = new List<Category>
+            {
+                new Category { Name = "Deep Element", HierarchyDescription = HierarchyId.Parse(nodeIdAsString) },
+            };
             context.BulkInsertOrUpdate(entities);
         }
 
@@ -860,7 +828,6 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
             var category = context.Categories.Single();
             Assert.Equal(nodeIdAsString, category.HierarchyDescription.ToString());
         }
-
     }
 
     [Theory]
@@ -878,10 +845,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<Entry>();
         for (int i = 1; i <= 10; i++)
         {
-            var entity = new Entry
-            {
-                Name = "Name " + i,
-            };
+            var entity = new Entry { Name = "Name " + i };
             entities.Add(entity);
         }
         // [DEST]
@@ -895,10 +859,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities2 = new List<EntryPrep>();
         for (int i = 1; i <= 20; i++)
         {
-            var entity = new EntryPrep
-            {
-                NameInfo = "Name Info " + i,
-            };
+            var entity = new EntryPrep { NameInfo = "Name Info " + i };
             entities2.Add(entity);
         }
         context.EntryPreps.AddRange(entities2);
@@ -907,18 +868,19 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var mappings = new Dictionary<string, string>
         {
             { nameof(EntryPrep.EntryPrepId), nameof(Entry.EntryId) }, // here used 'nameof(Prop)' since Columns have the same name as Props
-            { nameof(EntryPrep.NameInfo), nameof(Entry.Name) }       // if columns they were different name then they would be set with string names, eg. "EntryPrepareId"
+            { nameof(EntryPrep.NameInfo), nameof(Entry.Name) }, // if columns they were different name then they would be set with string names, eg. "EntryPrepareId"
         };
-        var bulkConfig = new BulkConfig {
+        var bulkConfig = new BulkConfig
+        {
             CustomSourceTableName = nameof(EntryPrep),
             CustomSourceDestinationMappingColumns = mappings,
             //UpdateByProperties = new List<string> { "Name" } // with this all are insert since names are different
         };
-        // [SOURCE] 
+        // [SOURCE]
         context.BulkInsertOrUpdate(new List<Entry>(), bulkConfig); // InsertOrMERGE from table 'EntryPrep' into table 'Entry'
         Assert.Equal(20, context.Entries.Count());
     }
-        
+
     [Fact]
     private void TablePerTypeInsertTest()
     {
@@ -954,21 +916,11 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var bulkConfigBase = new BulkConfig
         {
             SqlBulkCopyOptions = Microsoft.Data.SqlClient.SqlBulkCopyOptions.KeepIdentity, // OPTION 1. - to ensure insert order is kept the same since SqlBulkCopy does not guarantee it.
-            PropertiesToInclude = new List<string>
-                {
-                    nameof(LogPersonReport.LogId),
-                    nameof(LogPersonReport.PersonId),
-                    nameof(LogPersonReport.RegBy),
-                    nameof(LogPersonReport.CreatedDate)
-                }
+            PropertiesToInclude = new List<string> { nameof(LogPersonReport.LogId), nameof(LogPersonReport.PersonId), nameof(LogPersonReport.RegBy), nameof(LogPersonReport.CreatedDate) },
         };
         var bulkConfig = new BulkConfig
         {
-            PropertiesToInclude = new List<string> {
-                    nameof(LogPersonReport.LogId),
-                    nameof(LogPersonReport.ReportId),
-                    nameof(LogPersonReport.LogPersonReportTypeId)
-                }
+            PropertiesToInclude = new List<string> { nameof(LogPersonReport.LogId), nameof(LogPersonReport.ReportId), nameof(LogPersonReport.LogPersonReportTypeId) },
         };
         context.BulkInsert(entities, bulkConfigBase, type: typeof(Log)); // to base 'Log' table
 
@@ -991,7 +943,15 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         var bulk = new List<AtypicalRowVersionEntity>();
         for (var i = 0; i < 100; i++)
-            bulk.Add(new AtypicalRowVersionEntity { Id = Guid.NewGuid(), Name = $"Row {i}", RowVersion = i, SyncDevice = "Test" });
+            bulk.Add(
+                new AtypicalRowVersionEntity
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Row {i}",
+                    RowVersion = i,
+                    SyncDevice = "Test",
+                }
+            );
 
         //Assert.Throws<InvalidOperationException>(() => context.BulkInsertOrUpdate(bulk)); // commented since when running in Debug mode it pauses on Exception
         context.BulkInsertOrUpdate(bulk, new BulkConfig { IgnoreRowVersion = true });
@@ -1025,11 +985,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<Event>();
         for (int i = 1; i <= 10; i++)
         {
-            var entity = new Event
-            {
-                Name = "Event " + i,
-                TimeCreated = DateTime.Now
-            };
+            var entity = new Event { Name = "Event " + i, TimeCreated = DateTime.Now };
             var testTime = new DateTime(2020, 1, 1, 12, 45, 20, 324);
             if (i == 1)
             {
@@ -1088,14 +1044,14 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         var entities = new List<Archive>
         {
             new Archive { ArchiveId = byte1 },
-            new Archive { ArchiveId = byte2 }
+            new Archive { ArchiveId = byte2 },
         };
         context.BulkRead(entities);
 
         Assert.Equal("Desc1", entities[0].Description);
         Assert.Equal("Desc2", entities[1].Description);
     }
-    
+
     [Theory]
     [InlineData(DbServerType.SQLServer)]
     [InlineData(DbServerType.SQLite)]
@@ -1109,12 +1065,7 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         using (var context = new TestContext(ContextUtil.GetOptions()))
         {
-            var entities = new List<PrivateKey> {
-                new()
-                {
-                    Name = "foo"
-                }
-            };
+            var entities = new List<PrivateKey> { new() { Name = "foo" } };
             context.BulkInsertOrUpdate(entities);
         }
 
@@ -1155,6 +1106,6 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
 
         Assert.Equal(4, items.Count);
         Assert.Equal(2, items.Where(i => i.Name == "name 2").Count());
-        Assert.Empty(items.Where(i => i.Name == "name 4"));
+        Assert.DoesNotContain(items, i => i.Name == "name 4");
     }
 }

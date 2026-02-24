@@ -556,7 +556,11 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
         {
             progress?.Invoke(ProgressHelper.GetProgress(entities.Count, e.RowsCopied)); // round to 4 decimal places
         };
-        sqlBulkCopy.BulkCopyTimeout = tableInfo.BulkConfig.BulkCopyTimeout ?? context.Database.GetCommandTimeout() ?? sqlBulkCopy.BulkCopyTimeout;
+
+        var resolvedTimeout = tableInfo.BulkConfig.BulkCopyTimeout ?? context.Database.GetCommandTimeout();
+        if (resolvedTimeout.HasValue)
+            sqlBulkCopy.BulkCopyTimeout = resolvedTimeout.Value;
+
         sqlBulkCopy.EnableStreaming = tableInfo.BulkConfig.EnableStreaming;
 
         if (setColumnMapping)
