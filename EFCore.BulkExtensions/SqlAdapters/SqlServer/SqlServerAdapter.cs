@@ -1,10 +1,4 @@
-﻿using EFCore.BulkExtensions.Helpers;
-using Microsoft.Data.SqlClient;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
-using NetTopologySuite.Geometries;
-using NetTopologySuite.IO;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.IO;
@@ -12,11 +6,17 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using EFCore.BulkExtensions.Helpers;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using NetTopologySuite.Geometries;
+using NetTopologySuite.IO;
 
 namespace EFCore.BulkExtensions.SqlAdapters.SqlServer;
 
 /// <inheritdoc/>
-public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
+public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
 {
     internal static string CreateTableCopy(string existingTableName, string newTableName, TableInfo tableInfo, bool isOutputTable = false)
     {
@@ -26,15 +26,18 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         {
             columnsNames.Remove(tableInfo.TimeStampColumnName);
         }
-        
+
         string statsColumn = (tableInfo.BulkConfig.OutputTableHasSqlActionColumn && isOutputTable) ? $", CAST('' AS char(1)) AS [{tableInfo.SqlActionIUD}] " : "";
         string indexMappingColumn = (tableInfo.BulkConfig.UseOriginalIndexToIdentityMappingColumn) ? $", CAST(-1 AS int) AS [{tableInfo.OriginalIndexColumnName}] " : "";
-        var q = $"SELECT TOP 0 {SqlQueryBuilder.GetCommaSeparatedColumns(columnsNames, "T")} " + statsColumn + indexMappingColumn +
-                $"INTO {newTableName} FROM {existingTableName} AS T " +
-                $"LEFT JOIN {existingTableName} AS Source ON 1 = 0;"; // removes Identity constraint
+        var q =
+            $"SELECT TOP 0 {SqlQueryBuilder.GetCommaSeparatedColumns(columnsNames, "T")} "
+            + statsColumn
+            + indexMappingColumn
+            + $"INTO {newTableName} FROM {existingTableName} AS T "
+            + $"LEFT JOIN {existingTableName} AS Source ON 1 = 0;"; // removes Identity constraint
         return q;
     }
-    
+
     #region Methods
 
     /// <inheritdoc/>
@@ -48,7 +51,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
     {
         await InsertAsync(context, type, entities, tableInfo, progress, isAsync: true, cancellationToken).ConfigureAwait(false);
     }
-    
+
     private static string CheckTableExist(string fullTableName, bool isTempTable)
     {
         string q;
@@ -62,7 +65,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         }
         return q;
     }
-    
+
     private static string TruncateTable(string tableName) => $"TRUNCATE TABLE {tableName};";
 
     private static async Task<bool> CheckTableExistAsync(DbContext context, TableInfo tableInfo, bool isAsync, CancellationToken cancellationToken)
@@ -124,7 +127,6 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         return tableExist;
     }
 
-    
     private static async Task InsertAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress, bool isAsync, CancellationToken cancellationToken)
     {
         tableInfo.CheckToSetIdentityForPreserveOrder(tableInfo, entities);
@@ -144,7 +146,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
 
             using var sqlBulkCopy = GetSqlBulkCopy((SqlConnection)connection, transaction, tableInfo.BulkConfig);
             bool setColumnMapping = false;
-            SetSqlBulkCopyConfig(sqlBulkCopy, tableInfo, entities, setColumnMapping, progress);
+            SetSqlBulkCopyConfig(context, sqlBulkCopy, tableInfo, entities, setColumnMapping, progress);
             try
             {
                 var dataTable = GetDataTable(context, type, entities, sqlBulkCopy, tableInfo);
@@ -161,8 +163,9 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
             {
                 if (ex.Message.Contains(BulkExceptionMessage.ColumnMappingNotMatch))
                 {
-                    bool tableExist = isAsync ? await CheckTableExistAsync(context, tableInfo, isAsync: true, cancellationToken).ConfigureAwait(false)
-                                                    : CheckTableExistAsync(context, tableInfo, isAsync: false, cancellationToken).GetAwaiter().GetResult();
+                    bool tableExist = isAsync
+                        ? await CheckTableExistAsync(context, tableInfo, isAsync: true, cancellationToken).ConfigureAwait(false)
+                        : CheckTableExistAsync(context, tableInfo, isAsync: false, cancellationToken).GetAwaiter().GetResult();
 
                     if (!tableExist)
                     {
@@ -195,7 +198,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
                 context.Database.CloseConnection();
             }
         }
-        
+
         if (!tableInfo.CreatedOutputTable)
         {
             tableInfo.CheckToSetIdentityForPreserveOrder(tableInfo, entities, reset: true);
@@ -203,17 +206,19 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
     }
 
     /// <inheritdoc/>
-    public void Merge<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, OperationType operationType, Action<decimal>? progress) where T : class
+    public void Merge<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, OperationType operationType, Action<decimal>? progress)
+        where T : class
     {
         MergeAsync(context, type, entities, tableInfo, operationType, progress, isAsync: false, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc/>
-    public async Task MergeAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, OperationType operationType, Action<decimal>? progress, CancellationToken cancellationToken) where T : class
+    public async Task MergeAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, OperationType operationType, Action<decimal>? progress, CancellationToken cancellationToken)
+        where T : class
     {
         await MergeAsync(context, type, entities, tableInfo, operationType, progress, isAsync: true, cancellationToken).ConfigureAwait(false);
     }
-    
+
     /// <summary>
     /// Generates SQL query to alter table columns to nullables
     /// </summary>
@@ -230,8 +235,18 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         }
         return q;
     }
-    
-    private async Task MergeAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, OperationType operationType, Action<decimal>? progress, bool isAsync, CancellationToken cancellationToken) where T : class
+
+    private async Task MergeAsync<T>(
+        DbContext context,
+        Type type,
+        IList<T> entities,
+        TableInfo tableInfo,
+        OperationType operationType,
+        Action<decimal>? progress,
+        bool isAsync,
+        CancellationToken cancellationToken
+    )
+        where T : class
     {
         var entityPropertyWithDefaultValue = entities.GetPropertiesWithDefaultValue(type, tableInfo);
 
@@ -255,7 +270,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
             }
 
             var sqlCreateTableCopy = CreateTableCopy(tableInfo.FullTableName, tableInfo.FullTempTableName, tableInfo);
-            
+
             if (isAsync)
             {
                 await context.Database.ExecuteSqlRawAsync(sqlCreateTableCopy, cancellationToken).ConfigureAwait(false);
@@ -386,7 +401,6 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
                     {
                         context.Database.ExecuteSqlRaw(sqlDropOutputTable);
                     }
-
                 }
                 if (tableInfo.BulkConfig.CustomSourceTableName == null)
                 {
@@ -419,18 +433,21 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
     }
 
     /// <inheritdoc/>
-    public void Read<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress) where T : class
+    public void Read<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress)
+        where T : class
     {
         ReadAsync(context, type, entities, tableInfo, progress, isAsync: false, CancellationToken.None).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc/>
-    public async Task ReadAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress, CancellationToken cancellationToken) where T : class
+    public async Task ReadAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress, CancellationToken cancellationToken)
+        where T : class
     {
         await ReadAsync(context, type, entities, tableInfo, progress, isAsync: true, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task ReadAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress, bool isAsync, CancellationToken cancellationToken) where T : class
+    private async Task ReadAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, Action<decimal>? progress, bool isAsync, CancellationToken cancellationToken)
+        where T : class
     {
         Dictionary<string, string> previousPropertyColumnNamesDict = tableInfo.ConfigureBulkReadTableInfo();
 
@@ -460,7 +477,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
             var sqlSelectJoinTable = SqlQueryBuilder.SelectJoinTable(tableInfo);
 
             tableInfo.PropertyColumnNamesDict = previousPropertyColumnNamesDict; // TODO Consider refactor and integrate with TimeStampPropertyName, also check for Calculated props.
-                                                                                 // Output only PropertisToInclude and for getting Id with SetOutputIdentity
+            // Output only PropertisToInclude and for getting Id with SetOutputIdentity
             if (tableInfo.TimeStampPropertyName != null && !tableInfo.PropertyColumnNamesDict.ContainsKey(tableInfo.TimeStampPropertyName) && tableInfo.TimeStampColumnName is not null)
             {
                 tableInfo.PropertyColumnNamesDict.Add(tableInfo.TimeStampPropertyName, tableInfo.TimeStampColumnName);
@@ -498,21 +515,22 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
             }
         }
     }
-    
+
     private static string SetIdentityInsert(string tableName, bool identityInsert)
     {
         string ON_OFF = identityInsert ? "ON" : "OFF";
         var q = $"SET IDENTITY_INSERT {tableName} {ON_OFF};";
         return q;
     }
-    
+
     private static string AddColumn(string fullTableName, string columnName, string columnType) => $"ALTER TABLE {fullTableName} ADD [{columnName}] {columnType};";
 
     /// <inheritdoc/>
     public void Truncate(DbContext context, TableInfo tableInfo) => context.Database.ExecuteSqlRaw(TruncateTable(tableInfo.FullTableName));
 
     /// <inheritdoc/>
-    public async Task TruncateAsync(DbContext context, TableInfo tableInfo, CancellationToken cancellationToken) => await context.Database.ExecuteSqlRawAsync(TruncateTable(tableInfo.FullTableName), cancellationToken).ConfigureAwait(false);
+    public async Task TruncateAsync(DbContext context, TableInfo tableInfo, CancellationToken cancellationToken) =>
+        await context.Database.ExecuteSqlRawAsync(TruncateTable(tableInfo.FullTableName), cancellationToken).ConfigureAwait(false);
 
     #endregion
 
@@ -523,13 +541,13 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         var sqlBulkCopy = new SqlBulkCopy(sqlConnection, config.SqlBulkCopyOptions, sqlTransaction);
         if (config.SqlBulkCopyColumnOrderHints != null)
         {
-            foreach(var hint in config.SqlBulkCopyColumnOrderHints)
+            foreach (var hint in config.SqlBulkCopyColumnOrderHints)
                 sqlBulkCopy.ColumnOrderHints.Add(hint);
         }
         return sqlBulkCopy;
     }
-  
-    private static void SetSqlBulkCopyConfig<T>(SqlBulkCopy sqlBulkCopy, TableInfo tableInfo, IList<T> entities, bool setColumnMapping, Action<decimal>? progress)
+
+    private static void SetSqlBulkCopyConfig<T>(DbContext context, SqlBulkCopy sqlBulkCopy, TableInfo tableInfo, IList<T> entities, bool setColumnMapping, Action<decimal>? progress)
     {
         sqlBulkCopy.DestinationTableName = tableInfo.InsertToTempTable ? tableInfo.FullTempTableName : tableInfo.FullTableName;
         sqlBulkCopy.BatchSize = tableInfo.BulkConfig.BatchSize;
@@ -538,7 +556,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         {
             progress?.Invoke(ProgressHelper.GetProgress(entities.Count, e.RowsCopied)); // round to 4 decimal places
         };
-        sqlBulkCopy.BulkCopyTimeout = tableInfo.BulkConfig.BulkCopyTimeout ?? sqlBulkCopy.BulkCopyTimeout;
+        sqlBulkCopy.BulkCopyTimeout = tableInfo.BulkConfig.BulkCopyTimeout ?? context.Database.GetCommandTimeout() ?? sqlBulkCopy.BulkCopyTimeout;
         sqlBulkCopy.EnableStreaming = tableInfo.BulkConfig.EnableStreaming;
 
         if (setColumnMapping)
@@ -560,11 +578,11 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
     {
         DataTable dataTable = InnerGetDataTable(context, ref type, entities, tableInfo);
 
-        foreach (DataColumn item in dataTable.Columns)  // Add mapping
+        foreach (DataColumn item in dataTable.Columns) // Add mapping
         {
             sqlBulkCopy.ColumnMappings.Add(item.ColumnName, item.ColumnName);
         }
-        
+
         return dataTable;
     }
 
@@ -585,28 +603,24 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         type = tableInfo.HasAbstractList ? entities[0]!.GetType() : type;
         var entityType = context.Model.FindEntityType(type) ?? throw new ArgumentException($"Unable to determine entity type from given type - {type.Name}");
         var entityTypeProperties = entityType.GetProperties().ToList();
-        var entityPropertiesDict = entityTypeProperties.Where(a => tableInfo.PropertyColumnNamesDict.ContainsKey(a.Name) ||
-                                                                   (tableInfo.BulkConfig.OperationType != OperationType.Read && a.Name == tableInfo.TimeStampPropertyName))
-                                                       .ToDictionary(a => a.Name, a => a);
+        var entityPropertiesDict = entityTypeProperties
+            .Where(a => tableInfo.PropertyColumnNamesDict.ContainsKey(a.Name) || (tableInfo.BulkConfig.OperationType != OperationType.Read && a.Name == tableInfo.TimeStampPropertyName))
+            .ToDictionary(a => a.Name, a => a);
         var entityNavigationOwnedDict = entityType.GetNavigations().Where(a => a.TargetEntityType.IsOwned()).ToDictionary(a => a.Name, a => a);
-        var entityShadowFkPropertiesDict = entityTypeProperties.Where(a => a.IsShadowProperty() &&
-                                                                           a.IsForeignKey() &&
-                                                                           a.GetContainingForeignKeys().FirstOrDefault()?.DependentToPrincipal?.Name != null)
-                                                                     .ToDictionary(x => x.GetContainingForeignKeys()?.First()?.DependentToPrincipal?.Name ?? string.Empty, a => a);
+        var entityShadowFkPropertiesDict = entityTypeProperties
+            .Where(a => a.IsShadowProperty() && a.IsForeignKey() && a.GetContainingForeignKeys().FirstOrDefault()?.DependentToPrincipal?.Name != null)
+            .ToDictionary(x => x.GetContainingForeignKeys()?.First()?.DependentToPrincipal?.Name ?? string.Empty, a => a);
 
-        var entityShadowFkPropertyColumnNamesDict = entityShadowFkPropertiesDict
-            .ToDictionary(a => a.Key, a => a.Value.GetColumnName(objectIdentifier));
-        var shadowPropertyColumnNamesDict = entityPropertiesDict
-            .Where(a => a.Value.IsShadowProperty()).ToDictionary(a => a.Key, a => a.Value.GetColumnName(objectIdentifier));
+        var entityShadowFkPropertyColumnNamesDict = entityShadowFkPropertiesDict.ToDictionary(a => a.Key, a => a.Value.GetColumnName(objectIdentifier));
+        var shadowPropertyColumnNamesDict = entityPropertiesDict.Where(a => a.Value.IsShadowProperty()).ToDictionary(a => a.Key, a => a.Value.GetColumnName(objectIdentifier));
 
         var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         var discriminatorColumn = GetDiscriminatorColumn(tableInfo);
 
         foreach (var property in properties)
         {
-            var hasDefaultVauleOnInsert = tableInfo.BulkConfig.OperationType == OperationType.Insert
-                && !tableInfo.BulkConfig.SetOutputIdentity
-                && tableInfo.DefaultValueProperties.Contains(property.Name);
+            var hasDefaultVauleOnInsert =
+                tableInfo.BulkConfig.OperationType == OperationType.Insert && !tableInfo.BulkConfig.SetOutputIdentity && tableInfo.DefaultValueProperties.Contains(property.Name);
 
             if (entityPropertiesDict.TryGetValue(property.Name, out var propertyEntityType))
             {
@@ -712,13 +726,13 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
                             if (tableInfo.ConvertibleColumnConverterDict.TryGetValue(propertyName, out var convertor))
                             {
                                 var underlyingType = Nullable.GetUnderlyingType(convertor.ProviderClrType) ?? convertor.ProviderClrType;
-          
+
                                 dataTable.Columns.Add(columnName, underlyingType);
                             }
                             else
                             {
                                 var ownedPropertyType = Nullable.GetUnderlyingType(innerProperty.PropertyType) ?? innerProperty.PropertyType;
-                                
+
                                 if (isSqlServer && (ownedPropertyType == typeof(Geometry) || ownedPropertyType.IsSubclassOf(typeof(Geometry))))
                                 {
                                     ownedPropertyType = typeof(byte[]);
@@ -736,7 +750,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
 
                                 dataTable.Columns.Add(columnName, ownedPropertyType);
                             }
-                            
+
                             columnsDict.Add(property.Name + "_" + innerProperty.Name, null);
                         }
                     }
@@ -756,9 +770,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
 
                 var isConvertible = columnName is not null && tableInfo.ConvertibleColumnConverterDict.ContainsKey(columnName);
 
-                var propertyType = isConvertible
-                    ? tableInfo.ConvertibleColumnConverterDict[columnName!].ProviderClrType
-                    : shadowProperty.ClrType;
+                var propertyType = isConvertible ? tableInfo.ConvertibleColumnConverterDict[columnName!].ProviderClrType : shadowProperty.ClrType;
 
                 var underlyingType = Nullable.GetUnderlyingType(propertyType);
                 if (underlyingType != null)
@@ -788,7 +800,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
             dataTable.Columns.Add(discriminatorColumn, discriminatorProperty.ClrType);
             columnsDict.Add(discriminatorColumn, entityType.GetDiscriminatorValue());
         }
-        
+
         bool hasConverterProperties = tableInfo.ConvertiblePropertyColumnDict.Count > 0;
 
         if (tableInfo.BulkConfig.UseOriginalIndexToIdentityMappingColumn)
@@ -800,24 +812,18 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
         var index = 0;
         foreach (T entity in entities)
         {
-            var propertiesToLoad = properties
-                .Where(a => !tableInfo.AllNavigationsDictionary.ContainsKey(a.Name)
-                            || entityShadowFkPropertiesDict.ContainsKey(a.Name)
-                            || tableInfo.OwnedTypesDict.ContainsKey(a.Name)); // omit virtual Navigation (except Owned and ShadowNavig.) since it's Getter can cause unwanted Select-s from Db
+            var propertiesToLoad = properties.Where(a =>
+                !tableInfo.AllNavigationsDictionary.ContainsKey(a.Name) || entityShadowFkPropertiesDict.ContainsKey(a.Name) || tableInfo.OwnedTypesDict.ContainsKey(a.Name)
+            ); // omit virtual Navigation (except Owned and ShadowNavig.) since it's Getter can cause unwanted Select-s from Db
 
             foreach (var property in propertiesToLoad)
             {
-                object? propertyValue = tableInfo.FastPropertyDict.ContainsKey(property.Name)
-                    ? tableInfo.FastPropertyDict[property.Name].Get(entity!)
-                    : null;
+                object? propertyValue = tableInfo.FastPropertyDict.ContainsKey(property.Name) ? tableInfo.FastPropertyDict[property.Name].Get(entity!) : null;
 
-                var hasDefaultVauleOnInsert = tableInfo.BulkConfig.OperationType == OperationType.Insert
-                    && !tableInfo.BulkConfig.SetOutputIdentity
-                    && tableInfo.DefaultValueProperties.Contains(property.Name);
+                var hasDefaultVauleOnInsert =
+                    tableInfo.BulkConfig.OperationType == OperationType.Insert && !tableInfo.BulkConfig.SetOutputIdentity && tableInfo.DefaultValueProperties.Contains(property.Name);
 
-                if (tableInfo.BulkConfig.DateTime2PrecisionForceRound
-                    && isSqlServer
-                    && tableInfo.DateTime2PropertiesPrecisionLessThen7Dict.TryGetValue(property.Name, out var precision))
+                if (tableInfo.BulkConfig.DateTime2PrecisionForceRound && isSqlServer && tableInfo.DateTime2PropertiesPrecisionLessThen7Dict.TryGetValue(property.Name, out var precision))
                 {
                     DateTime? dateTimePropertyValue = (DateTime?)propertyValue;
 
@@ -874,9 +880,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
                         continue; // BulkRead
                     }
 
-                    columnsDict[columnName] = propertyValue == null
-                        ? null
-                        : foreignKeyShadowProperty.FindFirstPrincipal()?.PropertyInfo?.GetValue(propertyValue); // TODO Check if can be optimized
+                    columnsDict[columnName] = propertyValue == null ? null : foreignKeyShadowProperty.FindFirstPrincipal()?.PropertyInfo?.GetValue(propertyValue); // TODO Check if can be optimized
                 }
                 else if (entityNavigationOwnedDict.ContainsKey(property.Name) && !tableInfo.LoadOnlyPKColumn)
                 {
@@ -890,7 +894,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
                         {
                             columnsDict[columnName] = ownedPropertyValue == null ? null : converter.ConvertToProvider.Invoke(ownedPropertyValue);
                         }
-                        else if(tableInfo.HasSpatialType && ownedPropertyValue is Geometry ownedGeometryValue)
+                        else if (tableInfo.HasSpatialType && ownedPropertyValue is Geometry ownedGeometryValue)
                         {
                             ownedGeometryValue.SRID = tableInfo.BulkConfig.SRID;
 
@@ -939,7 +943,7 @@ public sealed class SqlOperationsServerAdapter: ISqlOperationsAdapter
             {
                 columnsDict[tableInfo.OriginalIndexColumnName] = index;
             }
-            
+
             var record = columnsDict.Values.ToArray();
 
             dataTable.Rows.Add(record);
