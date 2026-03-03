@@ -47,6 +47,15 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
         Assert.Equal(firstDocument?.DocumentId, firstDocumentUp?.DocumentId);
     }
 
+    [Fact]
+    public void BulkConfigDefaultsSqlBulkCopyOptionsToTableLock()
+    {
+        // Test that the default SqlBulkCopyOptions is TableLock to prevent deadlocks
+        var config = new BulkConfig();
+
+        Assert.Equal(Microsoft.Data.SqlClient.SqlBulkCopyOptions.TableLock, config.SqlBulkCopyOptions);
+    }
+
     [Theory]
     [InlineData(DbServerType.SQLServer)]
     private void TemporalTableTest(DbServerType dbServer)
