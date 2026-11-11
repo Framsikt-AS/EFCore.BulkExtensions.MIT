@@ -34,6 +34,27 @@ public class EFCoreBatchTest : IAssemblyFixture<DbAssemblyFixture>
         Assert.Equal(currentDate, contextRead.Infos.First().DateTimeOff);
     }
 
+    [Fact]
+    public void BatchUpdate_SetParameterAvoidsEveryFilterParameterName()
+    {
+        ContextUtil.DbServer = DbServerType.SQLServer;
+
+        using var context = new TestContext(ContextUtil.GetOptions());
+        context.Truncate<Info>();
+        context.Infos.Add(new Info { Message = "before" });
+        context.SaveChanges();
+
+        // Named so that the filter takes both @Message and its first replacement, @Message_0.
+        string message = "before";
+        string message_0 = "before";
+        int updated = context.Infos.Where(a => a.Message == message && a.Message == message_0)
+            .BatchUpdate(new Info { Message = "after" });
+
+        Assert.Equal(1, updated);
+        using var contextRead = new TestContext(ContextUtil.GetOptions());
+        Assert.Equal("after", contextRead.Infos.Single().Message);
+    }
+
     [Theory]
     [InlineData(DbServerType.SQLServer)]
     [InlineData(DbServerType.SQLite)]
@@ -239,12 +260,22 @@ FROM [Parent] AS [p]
 WHERE [p].[ParentId] = 1";
 #endif
 
-#if V9 || V10
+#if V9
                 expectedSql =
 @"UPDATE p SET  [p].[Description] = (COALESCE(CONVERT(varchar(100), (
     SELECT COALESCE(SUM([c].[Value]), 0.0)
     FROM [Child] AS [c]
     WHERE [p].[ParentId] = [c].[ParentId] AND [c].[IsEnabled] = CAST(1 AS bit) AND [c].[Value] = @__p_0)), '')) , [p].[Value] = @param_1 
+FROM [Parent] AS [p]
+WHERE [p].[ParentId] = 1";
+#endif
+
+#if V10
+                expectedSql =
+@"UPDATE p SET  [p].[Description] = (COALESCE(CONVERT(varchar(100), (
+    SELECT COALESCE(SUM([c].[Value]), 0.0)
+    FROM [Child] AS [c]
+    WHERE [p].[ParentId] = [c].[ParentId] AND [c].[IsEnabled] = CAST(1 AS bit) AND [c].[Value] = @p)), '')) , [p].[Value] = @param_1 
 FROM [Parent] AS [p]
 WHERE [p].[ParentId] = 1";
 #endif

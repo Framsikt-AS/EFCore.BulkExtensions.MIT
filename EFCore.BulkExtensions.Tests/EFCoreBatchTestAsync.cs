@@ -71,7 +71,12 @@ public class EFCoreBatchTestAsync : IAssemblyFixture<DbAssemblyFixture>
         var executedCommand = dbCommandInterceptor.ExecutedNonQueryCommands.Last();
         Assert.Equal(2, executedCommand.DbParameters.Count);
 
-        var oldPhoneNumberParameter = (Microsoft.Data.SqlClient.SqlParameter)executedCommand.DbParameters.Single(param => param.ParameterName == "@__oldPhoneNumber_0");
+#if V10
+        const string oldPhoneNumberParameterName = "@oldPhoneNumber";
+#else
+        const string oldPhoneNumberParameterName = "@__oldPhoneNumber_0";
+#endif
+        var oldPhoneNumberParameter = (Microsoft.Data.SqlClient.SqlParameter)executedCommand.DbParameters.Single(param => param.ParameterName == oldPhoneNumberParameterName);
         Assert.Equal(System.Data.DbType.AnsiString, oldPhoneNumberParameter.DbType);
         Assert.Equal(System.Data.SqlDbType.VarChar, oldPhoneNumberParameter.SqlDbType);
 
@@ -82,7 +87,7 @@ public class EFCoreBatchTestAsync : IAssemblyFixture<DbAssemblyFixture>
         var expectedSql =
 @"UPDATE p SET  [p].[PhoneNumber] = @param_1 
 FROM [Parent] AS [p]
-WHERE [p].[PhoneNumber] = @__oldPhoneNumber_0";
+WHERE [p].[PhoneNumber] = " + oldPhoneNumberParameterName;
 
         Assert.Equal(expectedSql.Replace("\r\n", "\n"), executedCommand.Sql.Replace("\r\n", "\n"));
     }
