@@ -215,6 +215,11 @@ public class EFCoreBulkTest : IAssemblyFixture<DbAssemblyFixture>
         var boxQuery = context.Boxes.AsQueryable().Where(a => a.BoxId <= 1);
         boxQuery.BatchUpdate(new Box { DocumentContent = jsonbDoc2, ElementContent = jsonbDoc2.RootElement });
 
+        // The captured variable shares its name with the jsonb column, so the SET parameter is renamed and must keep its jsonb type.
+        int elementContent = 1;
+        context.Boxes.Where(a => a.BoxId <= elementContent)
+            .BatchUpdate(new Box { DocumentContent = jsonbDoc, ElementContent = jsonbDoc.RootElement });
+
         //var incrementStep = 100;
         //var suffix = " Concatenated";
         //query.BatchUpdate(a => new Item { Name = a.Name + suffix, Quantity = a.Quantity + incrementStep }); // example of BatchUpdate Increment/Decrement value in variable
