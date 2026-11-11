@@ -239,12 +239,22 @@ FROM [Parent] AS [p]
 WHERE [p].[ParentId] = 1";
 #endif
 
-#if V9 || V10
+#if V9
                 expectedSql =
 @"UPDATE p SET  [p].[Description] = (COALESCE(CONVERT(varchar(100), (
     SELECT COALESCE(SUM([c].[Value]), 0.0)
     FROM [Child] AS [c]
     WHERE [p].[ParentId] = [c].[ParentId] AND [c].[IsEnabled] = CAST(1 AS bit) AND [c].[Value] = @__p_0)), '')) , [p].[Value] = @param_1 
+FROM [Parent] AS [p]
+WHERE [p].[ParentId] = 1";
+#endif
+
+#if V10
+                expectedSql =
+@"UPDATE p SET  [p].[Description] = (COALESCE(CONVERT(varchar(100), (
+    SELECT COALESCE(SUM([c].[Value]), 0.0)
+    FROM [Child] AS [c]
+    WHERE [p].[ParentId] = [c].[ParentId] AND [c].[IsEnabled] = CAST(1 AS bit) AND [c].[Value] = @p)), '')) , [p].[Value] = @param_1 
 FROM [Parent] AS [p]
 WHERE [p].[ParentId] = 1";
 #endif
