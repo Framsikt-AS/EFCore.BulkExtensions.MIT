@@ -216,9 +216,15 @@ public class EFCoreBulkTest : IAssemblyFixture<DbAssemblyFixture>
         boxQuery.BatchUpdate(new Box { DocumentContent = jsonbDoc2, ElementContent = jsonbDoc2.RootElement });
 
         // The captured variable shares its name with the jsonb column, so the SET parameter is renamed and must keep its jsonb type.
+        context.BulkInsert(new List<Box> { new() { DocumentContent = jsonbDoc2, ElementContent = jsonbDoc2.RootElement } });
         int elementContent = 1;
-        context.Boxes.Where(a => a.BoxId <= elementContent)
+        int updatedBoxes = context.Boxes.Where(a => a.BoxId <= elementContent)
             .BatchUpdate(new Box { DocumentContent = jsonbDoc, ElementContent = jsonbDoc.RootElement });
+
+        Assert.Equal(1, updatedBoxes);
+        var models = context.Boxes.AsNoTracking().OrderBy(a => a.BoxId).ToList()
+            .Select(a => (Element: a.ElementContent.GetProperty("ModelEL").GetString(), Document: a.DocumentContent.RootElement.GetProperty("ModelEL").GetString()));
+        Assert.Equal(new[] { ("Square", "Square"), ("Circle", "Circle") }, models);
 
         //var incrementStep = 100;
         //var suffix = " Concatenated";
