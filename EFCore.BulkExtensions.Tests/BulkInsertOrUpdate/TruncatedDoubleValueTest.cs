@@ -20,7 +20,11 @@ public class TruncatedDoubleValueTest : IClassFixture<TruncatedDoubleValueTest.D
     /// <summary>
     /// Covers issue: https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/85
     /// </summary>
+#if V10
+    [Theory(Skip = "Pomelo.EntityFrameworkCore.MySql has no EF Core 10 provider")]
+#else
     [Theory]
+#endif
     [InlineData(DbServerType.MySQL)]
     public async Task CheckThatWeDoNotTruncateValue(DbServerType serverType)
     {
