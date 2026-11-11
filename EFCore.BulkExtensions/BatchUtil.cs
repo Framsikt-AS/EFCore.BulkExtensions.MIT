@@ -267,6 +267,26 @@ public static class BatchUtil
         return GetSqlSetSegment(tableInfo, updateValuesType, updateValues, updateValuesType is null ? null : Activator.CreateInstance(updateValuesType), updateColumns, parameters);
     }
 
+    /// <summary>
+    /// <paramref name="parameters"/> already holds the parameters of the filtering query. Since EF Core 10 those are named
+    /// after the captured variable (<c>@price</c>), and SQL Server compares parameter names case-insensitively, so a column
+    /// called <c>Price</c> would otherwise bind to the filter's value.
+    /// </summary>
+    private static string GetUnusedParameterName(string columnName, List<object> parameters)
+    {
+        var usedNames = parameters.OfType<IDataParameter>()
+            .Select(parameter => parameter.ParameterName.TrimStart('@'))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var name = columnName;
+        for (var suffix = 0; usedNames.Contains(name); suffix++)
+        {
+            name = $"{columnName}_{suffix}";
+        }
+
+        return $"@{name}";
+    }
+
     private static string GetSqlSetSegment(TableInfo tableInfo, Type? updateValuesType, object? updateValues, object? defaultValues, List<string>? updateColumns, List<object> parameters)
     {
         string sql = string.Empty;
@@ -308,8 +328,8 @@ public static class BatchUtil
                 bool updateColumnExplicit = updateColumns != null && updateColumns.Contains(propertyName);
                 if (isDifferentFromDefault || updateColumnExplicit)
                 {
-                    sql += $"[{columnName}] = @{columnName}, ";
-                    var parameterName = $"@{columnName}";
+                    var parameterName = GetUnusedParameterName(columnName, parameters);
+                    sql += $"[{columnName}] = {parameterName}, ";
                     IDbDataParameter? param = TryCreateRelationalMappingParameter(
                         columnName,
                         parameterName,
@@ -322,7 +342,7 @@ public static class BatchUtil
 
                         param = new SqlParameter
                         {
-                            ParameterName = $"@{columnName}",
+                            ParameterName = parameterName,
                             Value = propertyUpdateValue
                         };
                         if (!isDifferentFromDefault && propertyUpdateValue == DBNull.Value
