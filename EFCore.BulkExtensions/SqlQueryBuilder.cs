@@ -57,6 +57,35 @@ public static class SqlQueryBuilder
         return q;
     }
 
+    /// <summary>
+    /// The column list of the MERGE's <c>OUTPUT ... INTO</c> output table, or an empty string when the values go in positionally.
+    /// </summary>
+    /// <remarks>
+    /// The output table is created without the timestamp column, which is appended to it afterwards (see <c>SqlOperationsServerAdapter.MergeAsync</c>),
+    /// while the OUTPUT list has the timestamp as the last entity column, before the action and original index columns.
+    /// Without a column list the timestamp would land in the action or index column. Tables without a timestamp column keep the positional INTO.
+    /// </remarks>
+    private static string GetOutputIntoColumnList(TableInfo tableInfo, List<string> outputColumnsNames)
+    {
+        if (tableInfo.TimeStampColumnName == null)
+        {
+            return string.Empty;
+        }
+
+        var intoColumns = new List<string>(outputColumnsNames);
+        if (tableInfo.BulkConfig.OutputTableHasSqlActionColumn)
+        {
+            intoColumns.Add(tableInfo.SqlActionIUD);
+        }
+
+        if (tableInfo.BulkConfig.UseOriginalIndexToIdentityMappingColumn)
+        {
+            intoColumns.Add(tableInfo.OriginalIndexColumnName);
+        }
+
+        return $" ({GetCommaSeparatedColumns(intoColumns)})";
+    }
+
     public static (string sql, IEnumerable<object> parameters) MergeTable<T>(DbContext? context, TableInfo tableInfo, OperationType operationType, IEnumerable<string>? entityPropertyWithDefaultValue = default) where T : class
     {
         List<object> parameters = new();
@@ -201,7 +230,7 @@ public static class SqlQueryBuilder
             }
             
             q += $" OUTPUT {commaSeparatedColumnsNames}" + mergeActionColumn + outputIndexColumn +
-                 $" INTO {tableInfo.FullTempOutputTableName}";
+                 $" INTO {tableInfo.FullTempOutputTableName}" + GetOutputIntoColumnList(tableInfo, outputColumnsNames);
         }
         q += ";";
 

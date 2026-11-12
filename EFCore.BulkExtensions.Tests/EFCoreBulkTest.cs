@@ -215,12 +215,27 @@ public class EFCoreBulkTest : IAssemblyFixture<DbAssemblyFixture>
         var boxQuery = context.Boxes.AsQueryable().Where(a => a.BoxId <= 1);
         boxQuery.BatchUpdate(new Box { DocumentContent = jsonbDoc2, ElementContent = jsonbDoc2.RootElement });
 
+        // The captured variable shares its name with the jsonb column, so the SET parameter is renamed and must keep its jsonb type.
+        context.BulkInsert(new List<Box> { new() { DocumentContent = jsonbDoc2, ElementContent = jsonbDoc2.RootElement } });
+        int elementContent = 1;
+        int updatedBoxes = context.Boxes.Where(a => a.BoxId <= elementContent)
+            .BatchUpdate(new Box { DocumentContent = jsonbDoc, ElementContent = jsonbDoc.RootElement });
+
+        Assert.Equal(1, updatedBoxes);
+        var models = context.Boxes.AsNoTracking().OrderBy(a => a.BoxId).ToList()
+            .Select(a => (Element: a.ElementContent.GetProperty("ModelEL").GetString(), Document: a.DocumentContent.RootElement.GetProperty("ModelEL").GetString()));
+        Assert.Equal(new[] { ("Square", "Square"), ("Circle", "Circle") }, models);
+
         //var incrementStep = 100;
         //var suffix = " Concatenated";
         //query.BatchUpdate(a => new Item { Name = a.Name + suffix, Quantity = a.Quantity + incrementStep }); // example of BatchUpdate Increment/Decrement value in variable
     }
     
+#if V10
+    [Theory(Skip = "Pomelo.EntityFrameworkCore.MySql has no EF Core 10 provider")]
+#else
     [Theory]
+#endif
     [InlineData(DbServerType.MySQL)]
     public void InsertTestMySQL(DbServerType dbServer)
     {
