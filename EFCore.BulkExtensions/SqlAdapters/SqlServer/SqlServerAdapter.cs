@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using EFCore.BulkExtensions.Helpers;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using NetTopologySuite.Geometries;
 using NetTopologySuite.IO;
@@ -619,7 +620,7 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
         var shadowPropertyColumnNamesDict = entityPropertiesDict.Where(a => a.Value.IsShadowProperty()).ToDictionary(a => a.Key, a => a.Value.GetColumnName(objectIdentifier));
 
         var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        var discriminatorColumn = GetDiscriminatorColumn(tableInfo);
+        var discriminatorColumn = GetDiscriminatorColumn(tableInfo, entityPropertiesDict);
 
         foreach (var property in properties)
         {
@@ -799,7 +800,9 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
 
         if (discriminatorColumn != null)
         {
-            var discriminatorProperty = entityPropertiesDict[discriminatorColumn];
+            var discriminatorProperty = tableInfo.BulkConfig.OperationType == OperationType.Read
+                ? FindPropertyByColumnName(entityPropertiesDict, discriminatorColumn, objectIdentifier)! // GetDiscriminatorColumn only returns a column it found this way
+                : entityPropertiesDict[discriminatorColumn];
 
             dataTable.Columns.Add(discriminatorColumn, discriminatorProperty.ClrType);
             columnsDict.Add(discriminatorColumn, entityType.GetDiscriminatorValue());
@@ -957,15 +960,25 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
         return dataTable;
     }
 
-    private static string? GetDiscriminatorColumn(TableInfo tableInfo)
+    private static string? GetDiscriminatorColumn(TableInfo tableInfo, Dictionary<string, IProperty> entityPropertiesDict)
     {
         string? discriminatorColumn = null;
         if (!tableInfo.BulkConfig.EnableShadowProperties && tableInfo.ShadowProperties.Count > 0)
         {
             var stringColumns = tableInfo.ColumnNamesTypesDict.Where(a => a.Value.Contains("char")).Select(a => a.Key).ToList();
-            discriminatorColumn = tableInfo.ShadowProperties.Where(a => stringColumns.Contains(a)).ElementAt(0);
+            var shadowStringColumns = tableInfo.ShadowProperties.Where(a => stringColumns.Contains(a));
+
+            discriminatorColumn = tableInfo.BulkConfig.OperationType == OperationType.Read
+                // BulkRead copies only the key / UpdateByProperties columns into its temp table (ConfigureBulkReadTableInfo) and joins on them,
+                // so a shadow string column (e.g. a TPH discriminator) belongs in the copy only when it is one of those columns.
+                // ShadowProperties holds column names, so match them to the read properties by column name.
+                ? shadowStringColumns.FirstOrDefault(column => FindPropertyByColumnName(entityPropertiesDict, column, tableInfo.ObjectIdentifier) != null)
+                : shadowStringColumns.ElementAt(0);
         }
         return discriminatorColumn;
     }
+
+    private static IProperty? FindPropertyByColumnName(Dictionary<string, IProperty> entityPropertiesDict, string columnName, StoreObjectIdentifier objectIdentifier)
+        => entityPropertiesDict.Values.FirstOrDefault(a => a.GetColumnName(objectIdentifier) == columnName);
     #endregion
 }
