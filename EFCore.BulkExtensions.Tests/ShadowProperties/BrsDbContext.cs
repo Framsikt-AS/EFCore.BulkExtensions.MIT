@@ -14,6 +14,7 @@ public class BrsDbContext : DbContext
     public DbSet<BrsAnimal> Animals { get; set; } = null!;
     public DbSet<BrsDog> Dogs { get; set; } = null!;
     public DbSet<BrsCat> Cats { get; set; } = null!;
+    public DbSet<BrsShape> Shapes { get; set; } = null!;
     public DbSet<BrsNote> Notes { get; set; } = null!;
     public DbSet<BrsStamp> Stamps { get; set; } = null!;
 
@@ -28,6 +29,15 @@ public class BrsDbContext : DbContext
         });
         modelBuilder.Entity<BrsDog>();
         modelBuilder.Entity<BrsCat>();
+
+        modelBuilder.Entity<BrsShape>(cfg =>
+        {
+            cfg.ToTable("BrsShape");
+            cfg.HasDiscriminator<string>(BrsShape.Kind).HasValue<BrsCircle>("circle").HasValue<BrsSquare>("square");
+            cfg.Property<string>(BrsShape.Kind).HasColumnName(BrsShape.KindColumn).HasMaxLength(20);
+        });
+        modelBuilder.Entity<BrsCircle>();
+        modelBuilder.Entity<BrsSquare>();
 
         modelBuilder.Entity<BrsNote>(cfg =>
         {

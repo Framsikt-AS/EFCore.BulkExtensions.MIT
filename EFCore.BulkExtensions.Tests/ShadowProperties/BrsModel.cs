@@ -22,6 +22,27 @@ public class BrsCat : BrsAnimal
     public int Lives { get; set; }
 }
 
+// TPH hierarchy whose discriminator is mapped to a column with a different name.
+public abstract class BrsShape
+{
+    public int Id { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public const string Kind = nameof(Kind);
+    public const string KindColumn = "shape_kind";
+}
+
+public class BrsCircle : BrsShape
+{
+    public int Radius { get; set; }
+}
+
+public class BrsSquare : BrsShape
+{
+    public int Side { get; set; }
+}
+
 // Plain (non-TPH) entity with shadow string properties, one of them mapped to a column with a different name.
 public class BrsNote
 {

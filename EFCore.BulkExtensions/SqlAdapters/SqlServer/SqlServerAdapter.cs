@@ -800,7 +800,9 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
 
         if (discriminatorColumn != null)
         {
-            var discriminatorProperty = entityPropertiesDict[discriminatorColumn];
+            var discriminatorProperty = tableInfo.BulkConfig.OperationType == OperationType.Read
+                ? FindPropertyByColumnName(entityPropertiesDict, discriminatorColumn, objectIdentifier)! // GetDiscriminatorColumn only returns a column it found this way
+                : entityPropertiesDict[discriminatorColumn];
 
             dataTable.Columns.Add(discriminatorColumn, discriminatorProperty.ClrType);
             columnsDict.Add(discriminatorColumn, entityType.GetDiscriminatorValue());
@@ -969,10 +971,14 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
             discriminatorColumn = tableInfo.BulkConfig.OperationType == OperationType.Read
                 // BulkRead copies only the key / UpdateByProperties columns into its temp table (ConfigureBulkReadTableInfo) and joins on them,
                 // so a shadow string column (e.g. a TPH discriminator) belongs in the copy only when it is one of those columns.
-                ? shadowStringColumns.FirstOrDefault(entityPropertiesDict.ContainsKey)
+                // ShadowProperties holds column names, so match them to the read properties by column name.
+                ? shadowStringColumns.FirstOrDefault(column => FindPropertyByColumnName(entityPropertiesDict, column, tableInfo.ObjectIdentifier) != null)
                 : shadowStringColumns.ElementAt(0);
         }
         return discriminatorColumn;
     }
+
+    private static IProperty? FindPropertyByColumnName(Dictionary<string, IProperty> entityPropertiesDict, string columnName, StoreObjectIdentifier objectIdentifier)
+        => entityPropertiesDict.Values.FirstOrDefault(a => a.GetColumnName(objectIdentifier) == columnName);
     #endregion
 }

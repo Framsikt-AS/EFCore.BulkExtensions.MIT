@@ -95,6 +95,37 @@ public class BulkReadShadowPropertyTests : IDisposable, IAssemblyFixture<DbAssem
 
     [Theory]
     [InlineData(DbServerType.SQLServer)]
+    public void BulkRead_TphEntityWithRenamedDiscriminatorColumn_ByUpdateByPropertiesIncludingDiscriminator(DbServerType dbServer)
+    {
+        // The discriminator property 'Kind' is mapped to the column 'shape_kind'. As one of the UpdateByProperties it has to be copied
+        // (matched by column name), otherwise its temp-table column stays NULL and the join silently finds nothing.
+        ContextUtil.DbServer = dbServer;
+        BrsCircle circleA, circleB;
+        using (var seed = CreateContext())
+        {
+            circleA = new BrsCircle { Name = "a", Radius = 1 };
+            circleB = new BrsCircle { Name = "b", Radius = 3 };
+            seed.Shapes.AddRange(circleA, new BrsSquare { Name = "a", Side = 2 }, circleB); // a square with the same Name as a circle
+            seed.SaveChanges();
+        }
+
+        using var db = CreateContext();
+        var entities = new List<BrsCircle> { new() { Name = "a" }, new() { Name = "b" }, new() { Name = "c" } };
+
+        db.BulkRead(entities, new BulkConfig
+        {
+            UpdateByProperties = new List<string> { nameof(BrsCircle.Name), BrsShape.Kind },
+            ReplaceReadEntities = true,
+        });
+
+        var read = entities.ToDictionary(a => a.Name, a => (a.Id, a.Radius));
+        Assert.Equal(2, read.Count);
+        Assert.Equal((circleA.Id, 1), read["a"]);
+        Assert.Equal((circleB.Id, 3), read["b"]);
+    }
+
+    [Theory]
+    [InlineData(DbServerType.SQLServer)]
     public void BulkRead_EntityWithShadowStringProperties_ByKey(DbServerType dbServer)
     {
         ContextUtil.DbServer = dbServer;
