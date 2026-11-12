@@ -110,8 +110,11 @@ internal static class InsertFromQueryUtil
                     "would be inserted without the target's conversion. Assign it a value that does not depend on the query, or insert these rows another way.");
             }
 
-            // EF Core projects equal expressions once, under the first member's name
-            var sameExpression = serverBindings.FirstOrDefault(a => ExpressionEqualityComparer.Instance.Equals(a.Expression, assignment.Expression));
+            // EF Core projects an SQL expression once, under the first member's name, so equal values share that column.
+            // A value that does not match here but still translates to the same SQL makes SQL Server reject the statement
+            // (invalid column name) before it writes anything.
+            var canonical = SameSqlCanonicalizer.Canonicalize(assignment.Expression);
+            var sameExpression = serverBindings.FirstOrDefault(a => ExpressionEqualityComparer.Instance.Equals(SameSqlCanonicalizer.Canonicalize(a.Expression), canonical));
             if (sameExpression == null)
             {
                 serverBindings.Add(assignment);
@@ -124,11 +127,9 @@ internal static class InsertFromQueryUtil
         if (serverBindings.Count == 0)
             throw new NotSupportedException("At least one of the selector's values must come from the query.");
 
-        if (source.Expression is MethodCallExpression { Method.DeclaringType: var declaringType, Method.Name: var methodName }
-            && declaringType == typeof(Queryable)
-            && methodName is nameof(Queryable.OrderBy) or nameof(Queryable.OrderByDescending) or nameof(Queryable.ThenBy) or nameof(Queryable.ThenByDescending))
+        if (EndsWithOrdering(source.Expression))
         {
-            throw new NotSupportedException("InsertFromQuery does not keep the query's order; remove the final OrderBy/ThenBy.");
+            throw new NotSupportedException("InsertFromQuery does not keep the query's order; remove the OrderBy/ThenBy, or limit it with Take or Skip.");
         }
 
         var convertedProperty = ConvertedValueFinder.Find(context.Model, [source.Expression, .. serverBindings.Select(a => a.Expression)]);
@@ -163,6 +164,79 @@ internal static class InsertFromQueryUtil
     }
 
     private static string Delimit(string identifier) => $"[{identifier.Replace("]", "]]")}]";
+
+    /// <summary>Operators after which EF Core keeps an ordering in the SQL.</summary>
+    private static readonly HashSet<string> OrderPreservingMethods =
+    [
+        nameof(Queryable.Where), nameof(Queryable.Select),
+        nameof(EntityFrameworkQueryableExtensions.AsNoTracking), nameof(EntityFrameworkQueryableExtensions.AsNoTrackingWithIdentityResolution),
+        nameof(EntityFrameworkQueryableExtensions.AsTracking), nameof(EntityFrameworkQueryableExtensions.IgnoreQueryFilters),
+        nameof(EntityFrameworkQueryableExtensions.IgnoreAutoIncludes), nameof(EntityFrameworkQueryableExtensions.TagWith),
+        nameof(EntityFrameworkQueryableExtensions.TagWithCallSite), nameof(EntityFrameworkQueryableExtensions.Include),
+        nameof(EntityFrameworkQueryableExtensions.ThenInclude), nameof(RelationalQueryableExtensions.AsSplitQuery),
+        nameof(RelationalQueryableExtensions.AsSingleQuery),
+    ];
+
+    /// <summary>
+    /// Whether the query's SQL ends with an ORDER BY that no TOP or OFFSET limits, which SQL Server does not allow in the derived table
+    /// (error 1033): an OrderBy/ThenBy reached from the outermost call through operators that keep the order. Take, Skip and any other
+    /// operator end the search.
+    /// </summary>
+    private static bool EndsWithOrdering(Expression expression)
+    {
+        while (expression is MethodCallExpression { Arguments.Count: > 0 } call)
+        {
+            if (call.Method.DeclaringType == typeof(Queryable)
+                && call.Method.Name is nameof(Queryable.OrderBy) or nameof(Queryable.OrderByDescending) or nameof(Queryable.ThenBy) or nameof(Queryable.ThenByDescending))
+            {
+                return true;
+            }
+
+            if (!OrderPreservingMethods.Contains(call.Method.Name))
+            {
+                return false;
+            }
+
+            expression = call.Arguments[0];
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Rewrites forms that EF Core translates to the same SQL into one form, so equal values are recognised before EF Core merges them:
+    /// <c>EF.Property(x, "Name")</c> becomes <c>x.Name</c>, and conversions that only add or remove <see cref="Nullable{T}"/> are dropped.
+    /// Used only for comparing.
+    /// </summary>
+    private sealed class SameSqlCanonicalizer : ExpressionVisitor
+    {
+        private static readonly SameSqlCanonicalizer Instance = new();
+
+        public static Expression Canonicalize(Expression expression) => Instance.Visit(expression);
+
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (node.Method.DeclaringType == typeof(EF) && node.Method.Name == nameof(EF.Property)
+                && node.Arguments[1] is ConstantExpression { Value: string propertyName }
+                && node.Arguments[0].Type.GetProperty(propertyName) is { } property)
+            {
+                return Expression.Property(Visit(node.Arguments[0]), property);
+            }
+
+            return base.VisitMethodCall(node);
+        }
+
+        protected override Expression VisitUnary(UnaryExpression node)
+        {
+            if (node.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked
+                && (Nullable.GetUnderlyingType(node.Type) == node.Operand.Type || Nullable.GetUnderlyingType(node.Operand.Type) == node.Type))
+            {
+                return Visit(node.Operand);
+            }
+
+            return base.VisitUnary(node);
+        }
+    }
 
     /// <summary>
     /// Whether EF Core would evaluate the expression once on the client rather than translate it: it does not use the selector's

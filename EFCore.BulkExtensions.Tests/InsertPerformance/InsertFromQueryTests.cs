@@ -226,23 +226,25 @@ public class InsertFromQueryTests : IClassFixture<InsertFromQueryTests.DatabaseF
         using var db = await CreateContextAsync();
         var details = await SeedDetailsAsync(db);
 
+        // EF Core projects each of these once, under the first member that uses it
         int inserted = await db.QueryDetails.Where(d => d.Period == 1).InsertFromQueryAsync(d => new QueryTotal
         {
             TenantId = d.TenantId,
             AccountCode = d.AccountCode,
-            DepartmentCode = d.AccountCode, // EF Core projects this expression once
+            ProjectCode = d.AccountCode, // the same expression
+            DepartmentCode = EF.Property<string>(d, nameof(QueryDetail.AccountCode)), // another form of it
             Description = d.Description,
             Year = d.Year,
             Period = d.Period,
+            UpdatedBy = (int)(int?)d.Period, // only a nullable round trip
             Amount = d.Amount,
             Updated = DateTime.UtcNow, // translated to the server's time, not evaluated once here
-            UpdatedBy = d.UpdatedBy,
             Status = ReaderStatus.None,
         });
 
         Assert.Equal(details.Count(a => a.Period == 1), inserted);
         var totals = await db.QueryTotals.AsNoTracking().ToListAsync();
-        Assert.All(totals, a => Assert.Equal(a.AccountCode, a.DepartmentCode));
+        Assert.All(totals, a => Assert.Equal((a.AccountCode, a.AccountCode, a.Period), (a.DepartmentCode, a.ProjectCode, a.UpdatedBy)));
         Assert.All(totals, a => Assert.InRange(a.Updated, DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(10)));
     }
 
@@ -261,8 +263,11 @@ public class InsertFromQueryTests : IClassFixture<InsertFromQueryTests.DatabaseF
         await Assert.ThrowsAsync<NotSupportedException>(() => details.InsertFromQueryAsync(d => new QueryTotal { AccountCode = d.AccountCode, Status = d.Status }));
         // not an object initializer of the target
         await Assert.ThrowsAsync<NotSupportedException>(() => details.InsertFromQueryAsync(d => NewTotal(d.AccountCode)));
-        // an order the insert would not keep
+        // an order the insert would not keep, also when it reaches the SQL through Where and Select
         await Assert.ThrowsAsync<NotSupportedException>(() => details.OrderBy(d => d.Amount).InsertFromQueryAsync(d => new QueryTotal { AccountCode = d.AccountCode }));
+        await Assert.ThrowsAsync<NotSupportedException>(() => details.OrderBy(d => d.Amount).Where(d => d.Period == 1).InsertFromQueryAsync(d => new QueryTotal { AccountCode = d.AccountCode }));
+        await Assert.ThrowsAsync<NotSupportedException>(() => details.OrderBy(d => d.Amount).ThenBy(d => d.Id).Select(d => new { d.AccountCode })
+                                                                     .InsertFromQueryAsync(d => new QueryTotal { AccountCode = d.AccountCode }));
         // nothing from the query
         await Assert.ThrowsAsync<NotSupportedException>(() => details.InsertFromQueryAsync(d => new QueryTotal { AccountCode = "x" }));
         // not an EF Core query

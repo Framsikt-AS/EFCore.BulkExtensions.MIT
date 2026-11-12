@@ -122,7 +122,7 @@ context.TruncateAsync<Entity>();
 with one `INSERT INTO ... SELECT` statement, so the rows never travel to the client:
 ```C#
 int inserted = context.Details
-    .Where(d => d.TenantId == tenantId && EF.Parameter(detailIds).Contains(d.Id))
+    .Where(d => d.TenantId == tenantId && detailIds.Contains(d.Id)) // EF Core 9+: EF.Parameter(detailIds) keeps it one OPENJSON parameter
     .GroupBy(d => new { d.AccountCode, d.Period })
     .InsertFromQuery(g => new Total
     {
