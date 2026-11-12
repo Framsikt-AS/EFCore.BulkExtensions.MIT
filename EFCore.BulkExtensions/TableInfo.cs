@@ -1086,8 +1086,7 @@ public class TableInfo
 
     public async Task LoadOutputDataAsync<T>(DbContext context, Type type, IList<T> entities, TableInfo tableInfo, bool isAsync, CancellationToken cancellationToken) where T : class
     {
-        bool hasIdentity = OutputPropertyColumnNamesDict.Any(a => a.Value == IdentityColumnName) ||
-                           (tableInfo.HasSinglePrimaryKey && tableInfo.DefaultValueProperties.Contains(tableInfo.PrimaryKeysPropertyColumnNameDict.FirstOrDefault().Key));
+        bool hasIdentity = HasOutputIdentityToLoad(tableInfo);
 
         if (BulkConfig.SetOutputIdentity && hasIdentity)
         {
@@ -1121,6 +1120,52 @@ public class TableInfo
                 StatsNumberInserted = mergeCounts.Inserted,
             };
         }
+    }
+
+    /// <summary>
+    /// Whether <see cref="LoadOutputDataAsync"/> reads generated ids back from the output table.
+    /// </summary>
+    private bool HasOutputIdentityToLoad(TableInfo tableInfo) =>
+        OutputPropertyColumnNamesDict.Any(a => a.Value == IdentityColumnName) ||
+        (tableInfo.HasSinglePrimaryKey && tableInfo.DefaultValueProperties.Contains(tableInfo.PrimaryKeysPropertyColumnNameDict.FirstOrDefault().Key));
+
+    /// <summary>
+    /// The columns of the merge output table when only generated ids are read back from it, or <c>null</c> when it needs every column.
+    /// </summary>
+    /// <remarks>
+    /// With <see cref="BulkConfig.UseOriginalIndexToIdentityMappingColumn"/> the output table is read only by
+    /// <see cref="QueryOutputTableForIndexToIdMapping"/> (original index, id, timestamp) and <see cref="GetMergeActionCounts"/> (the action column),
+    /// so the other columns are dead weight. The original index and action columns are not listed here; they are added as before.
+    /// Names are returned unescaped. <c>null</c> keeps today's full output, including when the id column is ambiguous, so that case fails as it did.
+    /// </remarks>
+    internal List<string>? GetIdOnlyOutputColumnNames()
+    {
+        if (!BulkConfig.UseOriginalIndexToIdentityMappingColumn)
+        {
+            return null;
+        }
+
+        var columnNames = new List<string>();
+        if (BulkConfig.SetOutputIdentity && HasOutputIdentityToLoad(this))
+        {
+            // Same choice as QueryOutputTableForIndexToIdMapping
+            string? idColumn = HasIdentity ? IdentityColumnName
+                             : PrimaryKeysPropertyColumnNameDict.Count == 1 ? PrimaryKeysPropertyColumnNameDict.Values.Single()
+                             : null;
+            if (idColumn == null)
+            {
+                return null;
+            }
+
+            columnNames.Add(idColumn);
+        }
+
+        if (TimeStampColumnName != null && !columnNames.Contains(TimeStampColumnName))
+        {
+            columnNames.Add(TimeStampColumnName);
+        }
+
+        return columnNames;
     }
 
     internal record struct IndexToGeneratedId(int OriginalIndex, object GeneratedId, object? GeneratedTimestamp);

@@ -171,7 +171,11 @@ public static class SqlQueryBuilder
             q += " WHEN MATCHED THEN DELETE";
         }
         
-        if (tableInfo.CreatedOutputTable)
+        if (tableInfo.CreatedOutputTable && tableInfo.GetIdOnlyOutputColumnNames() is { } idOnlyOutputColumns)
+        {
+            q += GetIdOnlyOutputClause(tableInfo, operationType, idOnlyOutputColumns);
+        }
+        else if (tableInfo.CreatedOutputTable)
         {
             string commaSeparatedColumnsNames;
             if (operationType == OperationType.InsertOrUpdateOrDelete || operationType == OperationType.Delete)
@@ -233,6 +237,34 @@ public static class SqlQueryBuilder
         }
 
         return (sql: q, parameters);
+    }
+
+    /// <summary>
+    /// The MERGE OUTPUT clause when only generated ids are read back (see <see cref="TableInfo.GetIdOnlyOutputColumnNames"/>).
+    /// It names the output table's columns, since the timestamp column is appended to that table after it is created.
+    /// </summary>
+    private static string GetIdOnlyOutputClause(TableInfo tableInfo, OperationType operationType, List<string> idOnlyOutputColumns)
+    {
+        bool outputsDeletedRows = operationType == OperationType.InsertOrUpdateOrDelete || operationType == OperationType.Delete;
+        var outputValues = new List<string>();
+        var intoColumns = new List<string>();
+        foreach (var columnName in idOnlyOutputColumns)
+        {
+            var column = $"[{columnName.Replace("]", "]]")}]";
+            outputValues.Add(outputsDeletedRows ? $"COALESCE(INSERTED.{column}, DELETED.{column})" : $"INSERTED.{column}");
+            intoColumns.Add(column);
+        }
+
+        if (tableInfo.BulkConfig.OutputTableHasSqlActionColumn)
+        {
+            outputValues.Add("SUBSTRING($action, 1, 1)");
+            intoColumns.Add($"[{tableInfo.SqlActionIUD}]");
+        }
+
+        outputValues.Add($"S.[{tableInfo.OriginalIndexColumnName}]");
+        intoColumns.Add($"[{tableInfo.OriginalIndexColumnName}]");
+
+        return $" OUTPUT {string.Join(", ", outputValues)} INTO {tableInfo.FullTempOutputTableName} ({string.Join(", ", intoColumns)})";
     }
 
 
