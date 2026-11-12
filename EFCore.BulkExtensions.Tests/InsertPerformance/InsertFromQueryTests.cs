@@ -234,7 +234,7 @@ public class InsertFromQueryTests : IClassFixture<InsertFromQueryTests.DatabaseF
             ProjectCode = d.AccountCode, // the same expression
             DepartmentCode = EF.Property<string>(d, nameof(QueryDetail.AccountCode)), // another form of it
             Description = d.Description,
-            Year = d.Year,
+            Year = ((int?)d.Year) ?? 0, // a nullable conversion inside another expression
             Period = d.Period,
             UpdatedBy = (int)(int?)d.Period, // only a nullable round trip
             Amount = d.Amount,
@@ -244,7 +244,7 @@ public class InsertFromQueryTests : IClassFixture<InsertFromQueryTests.DatabaseF
 
         Assert.Equal(details.Count(a => a.Period == 1), inserted);
         var totals = await db.QueryTotals.AsNoTracking().ToListAsync();
-        Assert.All(totals, a => Assert.Equal((a.AccountCode, a.AccountCode, a.Period), (a.DepartmentCode, a.ProjectCode, a.UpdatedBy)));
+        Assert.All(totals, a => Assert.Equal((a.AccountCode, a.AccountCode, a.Period, 2026), (a.DepartmentCode, a.ProjectCode, a.UpdatedBy, a.Year)));
         Assert.All(totals, a => Assert.InRange(a.Updated, DateTime.UtcNow.AddMinutes(-10), DateTime.UtcNow.AddMinutes(10)));
     }
 

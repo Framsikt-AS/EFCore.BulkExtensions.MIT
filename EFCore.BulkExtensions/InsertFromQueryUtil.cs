@@ -205,14 +205,32 @@ internal static class InsertFromQueryUtil
 
     /// <summary>
     /// Rewrites forms that EF Core translates to the same SQL into one form, so equal values are recognised before EF Core merges them:
-    /// <c>EF.Property(x, "Name")</c> becomes <c>x.Name</c>, and conversions that only add or remove <see cref="Nullable{T}"/> are dropped.
-    /// Used only for comparing.
+    /// <c>EF.Property(x, "Name")</c> becomes <c>x.Name</c> (converted back to the type the call had, so the expressions around it still fit),
+    /// and conversions that only add or remove <see cref="Nullable{T}"/> are dropped at the top of the value, where nothing is rebuilt around them.
+    /// Used only for comparing: if the rewrite fails, the expression is compared as written.
     /// </summary>
     private sealed class SameSqlCanonicalizer : ExpressionVisitor
     {
         private static readonly SameSqlCanonicalizer Instance = new();
 
-        public static Expression Canonicalize(Expression expression) => Instance.Visit(expression);
+        public static Expression Canonicalize(Expression expression)
+        {
+            try
+            {
+                var canonical = Instance.Visit(expression);
+                while (canonical is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } convert
+                       && (Nullable.GetUnderlyingType(convert.Type) == convert.Operand.Type || Nullable.GetUnderlyingType(convert.Operand.Type) == convert.Type))
+                {
+                    canonical = convert.Operand;
+                }
+
+                return canonical;
+            }
+            catch (Exception)
+            {
+                return expression;
+            }
+        }
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
@@ -220,21 +238,11 @@ internal static class InsertFromQueryUtil
                 && node.Arguments[1] is ConstantExpression { Value: string propertyName }
                 && node.Arguments[0].Type.GetProperty(propertyName) is { } property)
             {
-                return Expression.Property(Visit(node.Arguments[0]), property);
+                Expression member = Expression.Property(Visit(node.Arguments[0]), property);
+                return member.Type == node.Type ? member : Expression.Convert(member, node.Type);
             }
 
             return base.VisitMethodCall(node);
-        }
-
-        protected override Expression VisitUnary(UnaryExpression node)
-        {
-            if (node.NodeType is ExpressionType.Convert or ExpressionType.ConvertChecked
-                && (Nullable.GetUnderlyingType(node.Type) == node.Operand.Type || Nullable.GetUnderlyingType(node.Operand.Type) == node.Type))
-            {
-                return Visit(node.Operand);
-            }
-
-            return base.VisitUnary(node);
         }
     }
 
