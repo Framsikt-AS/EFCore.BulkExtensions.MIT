@@ -118,6 +118,31 @@ context.Truncate<Entity>();
 context.TruncateAsync<Entity>();
 ```
 
+**InsertFromQuery** (SQL Server only) inserts a row for every row of an *IQueryable* into an entity's table on the server,
+with one `INSERT INTO ... SELECT` statement, so the rows never travel to the client:
+```C#
+int inserted = context.Details
+    .Where(d => d.TenantId == tenantId && detailIds.Contains(d.Id)) // EF Core 9+: EF.Parameter(detailIds) keeps it one OPENJSON parameter
+    .GroupBy(d => new { d.AccountCode, d.Period })
+    .InsertFromQuery(g => new Total
+    {
+        TenantId = tenantId,               // does not depend on the row: sent once as a parameter
+        AccountCode = g.Key.AccountCode,   // from the query: computed by SQL Server
+        Period = g.Key.Period,
+        Amount = g.Sum(d => d.Amount),
+    });
+// or: await query.InsertFromQueryAsync(g => new Total { ... }, cancellationToken);
+```
+- The selector must be an object initializer of the target entity. Only the assigned properties are inserted; the others get their column's default.
+  Table and column names come from the target's mapping.
+- It returns the number of rows inserted, runs in the context's current transaction and uses the context's command timeout.
+- Values that come from the query must translate to SQL entirely; otherwise it throws `NotSupportedException` instead of evaluating them on the client.
+  Grouping and comparisons use the database's collation, as the query would.
+- The identity, computed and row version columns cannot be assigned. Properties with a value converter (enums too) can only be assigned values
+  that do not depend on the row, and a value read from a property with a value converter (other than an enum's default) is refused, since
+  SQL Server would copy it as stored. Filtering or ordering on such a property is fine.
+  Owned and inherited entity types, and a query ending with `OrderBy`, are not supported.
+
 ## Performances
 Following are performances (in seconds)
 * For SQL Server (v. 2019):

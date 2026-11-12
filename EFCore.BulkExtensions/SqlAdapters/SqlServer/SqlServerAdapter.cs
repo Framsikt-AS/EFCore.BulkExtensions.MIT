@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.Common;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -21,6 +22,11 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
 {
     internal static string CreateTableCopy(string existingTableName, string newTableName, TableInfo tableInfo, bool isOutputTable = false)
     {
+        if (isOutputTable && tableInfo.GetIdOnlyOutputColumnNames() is { } idOnlyOutputColumns)
+        {
+            return CreateIdOnlyOutputTable(existingTableName, newTableName, tableInfo, idOnlyOutputColumns);
+        }
+
         // TODO: (optionaly) if CalculateStats = True but SetOutputIdentity = False then Columns could be ommited from Create and from MergeOutput
         List<string> columnsNames = (isOutputTable ? tableInfo.OutputPropertyColumnNamesDict : tableInfo.PropertyColumnNamesDict).Values.ToList();
         if (tableInfo.TimeStampColumnName != null)
@@ -37,6 +43,29 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
             + $"INTO {newTableName} FROM {existingTableName} AS T "
             + $"LEFT JOIN {existingTableName} AS Source ON 1 = 0;"; // removes Identity constraint
         return q;
+    }
+
+    /// <summary>
+    /// The output table when only generated ids are read back (see <see cref="TableInfo.GetIdOnlyOutputColumnNames"/>):
+    /// the id column, the action column when needed and the original index column. The timestamp column is added afterwards, as for the full table.
+    /// </summary>
+    private static string CreateIdOnlyOutputTable(string existingTableName, string newTableName, TableInfo tableInfo, List<string> idOnlyOutputColumns)
+    {
+        var selectList = idOnlyOutputColumns
+            .Where(a => a != tableInfo.TimeStampColumnName)
+            .Select(a => $"T.[{a.Replace("]", "]]")}]")
+            .ToList();
+
+        if (tableInfo.BulkConfig.OutputTableHasSqlActionColumn)
+        {
+            selectList.Add($"CAST('' AS char(1)) AS [{tableInfo.SqlActionIUD}]");
+        }
+
+        selectList.Add($"CAST(-1 AS int) AS [{tableInfo.OriginalIndexColumnName}]");
+
+        return $"SELECT TOP 0 {string.Join(", ", selectList)} "
+               + $"INTO {newTableName} FROM {existingTableName} AS T "
+               + $"LEFT JOIN {existingTableName} AS Source ON 1 = 0;"; // removes Identity constraint
     }
 
     #region Methods
@@ -150,14 +179,31 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
             SetSqlBulkCopyConfig(context, sqlBulkCopy, tableInfo, entities, setColumnMapping, progress);
             try
             {
-                var dataTable = GetDataTable(context, type, entities, sqlBulkCopy, tableInfo);
-                if (isAsync)
+                var sqlTransaction = transaction == null ? null : (SqlTransaction)transaction.GetUnderlyingTransaction(tableInfo.BulkConfig);
+                var (dataTable, entityReader) = await GetBulkCopySourceAsync(context, type, entities, sqlBulkCopy, tableInfo, (SqlConnection)connection, sqlTransaction, isAsync, cancellationToken).ConfigureAwait(false);
+                if (entityReader != null)
                 {
-                    await sqlBulkCopy.WriteToServerAsync(dataTable, cancellationToken).ConfigureAwait(false);
+                    using (entityReader)
+                    {
+                        if (isAsync)
+                        {
+                            await sqlBulkCopy.WriteToServerAsync(entityReader, cancellationToken).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            sqlBulkCopy.WriteToServer(entityReader);
+                        }
+
+                        entityReader.Failure?.Throw(); // an entity failed: the copy into the temp table was ended, not cancelled
+                    }
+                }
+                else if (isAsync)
+                {
+                    await sqlBulkCopy.WriteToServerAsync(dataTable!, cancellationToken).ConfigureAwait(false);
                 }
                 else
                 {
-                    sqlBulkCopy.WriteToServer(dataTable);
+                    sqlBulkCopy.WriteToServer(dataTable!);
                 }
             }
             catch (InvalidOperationException ex)
@@ -225,9 +271,13 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
     /// </summary>
     private static string AlterTableColumnsToNullable(string tableName, TableInfo tableInfo)
     {
+        var idOnlyOutputColumns = tableInfo.GetIdOnlyOutputColumnNames(); // the id-only output table has only these of the table's columns
         string q = "";
         foreach (var column in tableInfo.ColumnNamesTypesDict)
         {
+            if (idOnlyOutputColumns != null && !idOnlyOutputColumns.Contains(column.Key))
+                continue;
+
             string columnName = column.Key;
             string columnType = column.Value;
             if (columnName == tableInfo.TimeStampColumnName)
@@ -320,10 +370,10 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
                 }
             }
 
-            if (operationType == OperationType.InsertOrUpdateOrDelete)
+            // Output returns all changes including Deleted rows with all NULL values, so if TempOutput.Id col not Nullable it breaks
+            var sqlAlterTableColumnsToNullable = operationType == OperationType.InsertOrUpdateOrDelete ? AlterTableColumnsToNullable(tableInfo.FullTempOutputTableName, tableInfo) : "";
+            if (sqlAlterTableColumnsToNullable.Length > 0) // empty only for an id-only output table without an id column
             {
-                // Output returns all changes including Deleted rows with all NULL values, so if TempOutput.Id col not Nullable it breaks
-                var sqlAlterTableColumnsToNullable = AlterTableColumnsToNullable(tableInfo.FullTempOutputTableName, tableInfo);
                 if (isAsync)
                 {
                     await context.Database.ExecuteSqlRawAsync(sqlAlterTableColumnsToNullable, cancellationToken).ConfigureAwait(false);
@@ -592,9 +642,48 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
     }
 
     /// <summary>
+    /// The rows for <see cref="SqlBulkCopy"/>, with its column mappings added: a reader that streams over the entities when it is known to
+    /// copy exactly what the <see cref="DataTable"/> would (see <see cref="EntityBulkCopyReader{T}"/>), otherwise the <see cref="DataTable"/>.
+    /// </summary>
+    private static async Task<(DataTable? DataTable, EntityBulkCopyReader<T>? Reader)> GetBulkCopySourceAsync<T>(
+        DbContext context,
+        Type type,
+        IList<T> entities,
+        SqlBulkCopy sqlBulkCopy,
+        TableInfo tableInfo,
+        SqlConnection connection,
+        SqlTransaction? transaction,
+        bool isAsync,
+        CancellationToken cancellationToken
+    )
+    {
+        var schema = CreateBulkCopySchema(context, ref type, entities, tableInfo);
+
+        var reader = await EntityBulkCopyReader<T>.TryCreateAsync(context, entities, tableInfo, schema, connection, transaction, isAsync, cancellationToken).ConfigureAwait(false);
+        DataTable? dataTable = reader == null ? FillDataTable(context, entities, tableInfo, schema) : null;
+
+        foreach (DataColumn item in schema.DataTable.Columns) // Add mapping
+        {
+            sqlBulkCopy.ColumnMappings.Add(item.ColumnName, item.ColumnName);
+        }
+
+        return (dataTable, reader);
+    }
+
+    /// <summary>
     /// Common logic for two versions of GetDataTable
     /// </summary>
     private static DataTable InnerGetDataTable<T>(DbContext context, ref Type type, IList<T> entities, TableInfo tableInfo)
+    {
+        var schema = CreateBulkCopySchema(context, ref type, entities, tableInfo);
+        return FillDataTable(context, entities, tableInfo, schema);
+    }
+
+    /// <summary>
+    /// Creates the empty <see cref="DataTable"/> with the columns that are copied, and what filling it needs.
+    /// Shared by <see cref="FillDataTable"/> and <see cref="EntityBulkCopyReader{T}"/>, so both copy the same columns.
+    /// </summary>
+    private static BulkCopySchema CreateBulkCopySchema<T>(DbContext context, ref Type type, IList<T> entities, TableInfo tableInfo)
     {
         var dataTable = new DataTable();
         var columnsDict = new Dictionary<string, object?>();
@@ -602,7 +691,6 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
 
         var databaseType = SqlAdaptersMapping.GetDatabaseType(context);
         var isSqlServer = databaseType == DbServerType.SQLServer;
-        var sqlServerBytesWriter = new SqlServerBytesWriter();
 
         var objectIdentifier = tableInfo.ObjectIdentifier;
         type = tableInfo.HasAbstractList ? entities[0]!.GetType() : type;
@@ -808,13 +896,45 @@ public sealed class SqlOperationsServerAdapter : ISqlOperationsAdapter
             columnsDict.Add(discriminatorColumn, entityType.GetDiscriminatorValue());
         }
 
-        bool hasConverterProperties = tableInfo.ConvertiblePropertyColumnDict.Count > 0;
-
         if (tableInfo.BulkConfig.UseOriginalIndexToIdentityMappingColumn)
         {
             dataTable.Columns.Add(tableInfo.OriginalIndexColumnName, typeof(int));
             columnsDict.Add(tableInfo.OriginalIndexColumnName, -1);
         }
+
+        return new BulkCopySchema(
+            dataTable,
+            columnsDict,
+            ownedEntitiesMappedProperties,
+            isSqlServer,
+            entityType,
+            entityPropertiesDict,
+            entityNavigationOwnedDict,
+            entityShadowFkPropertiesDict,
+            entityShadowFkPropertyColumnNamesDict,
+            shadowPropertyColumnNamesDict,
+            properties
+        );
+    }
+
+    /// <summary>
+    /// Fills the <see cref="DataTable"/> of <see cref="CreateBulkCopySchema"/> with a row per entity.
+    /// </summary>
+    private static DataTable FillDataTable<T>(DbContext context, IList<T> entities, TableInfo tableInfo, BulkCopySchema schema)
+    {
+        var dataTable = schema.DataTable;
+        var columnsDict = schema.ColumnsDict;
+        var ownedEntitiesMappedProperties = schema.OwnedEntitiesMappedProperties;
+        var isSqlServer = schema.IsSqlServer;
+        var entityPropertiesDict = schema.EntityPropertiesDict;
+        var entityNavigationOwnedDict = schema.EntityNavigationOwnedDict;
+        var entityShadowFkPropertiesDict = schema.EntityShadowFkPropertiesDict;
+        var entityShadowFkPropertyColumnNamesDict = schema.EntityShadowFkPropertyColumnNamesDict;
+        var shadowPropertyColumnNamesDict = schema.ShadowPropertyColumnNamesDict;
+        var properties = schema.Properties;
+        var sqlServerBytesWriter = new SqlServerBytesWriter();
+
+        bool hasConverterProperties = tableInfo.ConvertiblePropertyColumnDict.Count > 0;
 
         var index = 0;
         foreach (T entity in entities)
