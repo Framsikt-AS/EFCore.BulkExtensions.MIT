@@ -171,21 +171,28 @@ public class InsertFromQueryOutputTests : IClassFixture<InsertFromQueryOutputTes
 
     /// <remarks>
     /// With XACT_ABORT OFF a failed statement leaves the caller's transaction open, so a caller that catches the error can still commit.
+    /// The first call's rows must survive the second call's rollback.
     /// </remarks>
     [Fact]
-    public async Task InACallersTransaction_AFailedOutputInsertUndoesTheTargetRowsToo()
+    public async Task InACallersTransaction_AFailedOutputInsertUndoesOnlyItsOwnRows()
     {
         using var db = await CreateContextAsync();
-        await SeedDetailsAsync(db);
+        var details = await SeedDetailsAsync(db);
+        var kept = details.First(a => a.TenantId == TenantId);
 
+        await db.Database.OpenConnectionAsync();
+        await db.Database.ExecuteSqlRawAsync("SET XACT_ABORT OFF;");
         await using (var transaction = await db.Database.BeginTransactionAsync())
         {
+            await db.QueryDetails.Where(d => d.Id == kept.Id).InsertFromQueryAsync(ToTotal(), (d, total) => new QueryTotalSource { TotalId = total.Id, DetailId = d.Id });
             var exception = await Assert.ThrowsAsync<SqlException>(() => db.QueryDetails.InsertFromQueryAsync(ToTotal(), (d, total) => new QueryTotalSource { TotalId = -(int)d.Id, DetailId = d.Id }));
             Assert.Equal(547, exception.Number);
             await transaction.CommitAsync();
         }
 
-        Assert.Equal((0, 0), (await db.QueryTotals.CountAsync(), await db.QueryTotalSources.CountAsync()));
+        var total = Assert.Single(await db.QueryTotals.AsNoTracking().ToListAsync());
+        var source = Assert.Single(await db.QueryTotalSources.AsNoTracking().ToListAsync());
+        Assert.Equal((kept.Amount, total.Id, kept.Id), (total.Amount, source.TotalId, source.DetailId));
     }
 
     /// <remarks>Without a transaction of the caller's, a failing output insert must not leave the target rows behind.</remarks>

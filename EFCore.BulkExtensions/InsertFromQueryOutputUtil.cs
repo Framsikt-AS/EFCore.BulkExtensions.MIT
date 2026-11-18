@@ -35,6 +35,7 @@ internal static class InsertFromQueryOutputUtil
     private const string SourceAlias = "__InsertFromQuery_source";
     private const string OwnTransactionVariable = "@__InsertFromQuery_ownTransaction";
     private const string SavepointName = "__InsertFromQuery_savepoint";
+    private const string SavedVariable = "@__InsertFromQuery_saved";
 
     internal static (DbContext Context, string Sql, List<object> Parameters, DbParameter RowCount) GetSql<TSource, TTarget, TOutput>(
         IQueryable<TSource> source,
@@ -164,14 +165,15 @@ internal static class InsertFromQueryOutputUtil
         parameters.Add(rowCount);
 
         // The two inserts are one change: in a transaction the batch starts, or else behind a savepoint in the session's own, which
-        // a failure rolls back to unless it doomed the transaction (XACT_ABORT ON). The temp table goes when the batch's sp_executesql
-        // scope ends.
+        // a failure rolls back to unless it doomed the transaction (XACT_ABORT ON). A distributed transaction allows no savepoint, so
+        // there the batch fails before inserting anything. The temp table goes when the batch's sp_executesql scope ends.
         var outputTable = Delimit("#__InsertFromQuery_output_" + Guid.NewGuid().ToString("N"));
         var allCopiedColumns = outputColumns.Concat(copiedColumns).ToList();
         var nl = Environment.NewLine;
         var sql = $"DECLARE {OwnTransactionVariable} bit = CASE WHEN @@TRANCOUNT = 0 THEN 1 ELSE 0 END;" + nl
+                  + $"DECLARE {SavedVariable} bit = 0;" + nl
                   + "BEGIN TRY" + nl
-                  + $"IF {OwnTransactionVariable} = 1 BEGIN TRANSACTION; ELSE SAVE TRANSACTION {SavepointName};" + nl
+                  + $"IF {OwnTransactionVariable} = 1 BEGIN TRANSACTION; ELSE BEGIN SAVE TRANSACTION {SavepointName}; SET {SavedVariable} = 1; END" + nl
                   + $"SELECT TOP (0) {string.Join(", ", outputColumns)} INTO {outputTable} FROM {output.FullTableName};" + nl
                   + $"MERGE INTO {target.FullTableName} AS [T]" + nl
                   + "USING (" + nl
@@ -188,7 +190,7 @@ internal static class InsertFromQueryOutputUtil
                   + "END TRY" + nl
                   + "BEGIN CATCH" + nl
                   + $"IF {OwnTransactionVariable} = 1 AND @@TRANCOUNT > 0 ROLLBACK TRANSACTION;" + nl
-                  + $"ELSE IF {OwnTransactionVariable} = 0 AND XACT_STATE() = 1 ROLLBACK TRANSACTION {SavepointName};" + nl
+                  + $"ELSE IF {SavedVariable} = 1 AND XACT_STATE() = 1 ROLLBACK TRANSACTION {SavepointName};" + nl
                   + "THROW;" + nl
                   + "END CATCH";
 
