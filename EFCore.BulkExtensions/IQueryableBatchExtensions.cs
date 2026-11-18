@@ -168,5 +168,57 @@ public static class IQueryableBatchExtensions
         await context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
         return (int)rowCount.Value!;
     }
+
+    /// <summary>
+    /// Inserts a row into <typeparamref name="TTarget"/>'s table for every row of <paramref name="source"/>, as
+    /// <see cref="InsertFromQuery{TSource, TTarget}"/> does, and for every inserted row a row into <typeparamref name="TOutput"/>'s table,
+    /// on the server, in one batch. SQL Server only.
+    /// </summary>
+    /// <param name="source">The query whose rows are inserted.</param>
+    /// <param name="selector">Maps a row of <paramref name="source"/> to the inserted row, as for <see cref="InsertFromQuery{TSource, TTarget}"/>.</param>
+    /// <param name="outputSelector">
+    /// Maps a row of <paramref name="source"/> and the row inserted for it to an output row, with an object initializer, like
+    /// <c>(x, inserted) => new Audit { ItemId = inserted.Id, SourceKey = x.Key }</c>. A value can be a property of the inserted row as it is
+    /// (its generated identity too), a value that depends on the source row only and translates to SQL, or a value that depends on neither.
+    /// </param>
+    /// <returns>The number of rows inserted into <typeparamref name="TTarget"/>'s table.</returns>
+    /// <remarks>
+    /// The rows are inserted with a <c>MERGE</c>, whose <c>OUTPUT</c> writes the output rows into a temp table, and an <c>INSERT</c> then copies them
+    /// into <typeparamref name="TOutput"/>'s table, so its triggers fire and its foreign keys are checked. The limits of
+    /// <see cref="InsertFromQuery{TSource, TTarget}"/> apply to both entity types.
+    /// </remarks>
+    /// <exception cref="NotSupportedException">The provider is not SQL Server, or a selector or entity type is not supported.</exception>
+    public static int InsertFromQuery<TSource, TTarget, TOutput>(
+        this IQueryable<TSource> source,
+        Expression<Func<TSource, TTarget>> selector,
+        Expression<Func<TSource, TTarget, TOutput>> outputSelector
+    )
+        where TTarget : class
+        where TOutput : class
+    {
+        var (context, sql, parameters, rowCount) = InsertFromQueryOutputUtil.GetSql(source, selector, outputSelector);
+        context.Database.ExecuteSqlRaw(sql, parameters);
+        return (int)rowCount.Value!;
+    }
+
+    /// <summary>
+    /// Inserts a row into <typeparamref name="TTarget"/>'s table for every row of <paramref name="source"/>, and for every inserted row a row into
+    /// <typeparamref name="TOutput"/>'s table, on the server, in one batch. SQL Server only.
+    /// See <see cref="InsertFromQuery{TSource, TTarget, TOutput}"/>.
+    /// </summary>
+    /// <returns>The number of rows inserted into <typeparamref name="TTarget"/>'s table.</returns>
+    public static async Task<int> InsertFromQueryAsync<TSource, TTarget, TOutput>(
+        this IQueryable<TSource> source,
+        Expression<Func<TSource, TTarget>> selector,
+        Expression<Func<TSource, TTarget, TOutput>> outputSelector,
+        CancellationToken cancellationToken = default
+    )
+        where TTarget : class
+        where TOutput : class
+    {
+        var (context, sql, parameters, rowCount) = InsertFromQueryOutputUtil.GetSql(source, selector, outputSelector);
+        await context.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken).ConfigureAwait(false);
+        return (int)rowCount.Value!;
+    }
     #endregion
 }

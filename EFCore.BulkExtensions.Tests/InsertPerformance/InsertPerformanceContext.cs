@@ -33,6 +33,7 @@ public class InsertPerformanceContext : DbContext
     public DbSet<QueryDetail> QueryDetails { get; set; } = null!;
     public DbSet<QueryTotal> QueryTotals { get; set; } = null!;
     public DbSet<QueryTotalAudit> QueryTotalAudits { get; set; } = null!;
+    public DbSet<QueryTotalSource> QueryTotalSources { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -65,6 +66,8 @@ public class InsertPerformanceContext : DbContext
 
         modelBuilder.Entity<QueryTotal>().Property(a => a.Note).HasDefaultValue("none");
         modelBuilder.Entity<QueryDetail>().Property(a => a.Price).HasConversion(a => (long)(a * 100), a => a / 100m); // stored as cents
+        modelBuilder.Entity<QueryTotalSource>().HasOne<QueryTotal>().WithMany().HasForeignKey(a => a.TotalId).OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<QueryTotalSource>().Property(a => a.Kind).HasConversion<string>().HasMaxLength(20).HasDefaultValue(ReaderStatus.None);
     }
 }
 
@@ -314,4 +317,18 @@ public class QueryTotalAudit
 {
     public int Id { get; set; }
     public int TotalId { get; set; }
+}
+
+/// <summary>Which detail a total was copied from: the output of InsertFromQuery with an output table, with a foreign key to the total.</summary>
+public class QueryTotalSource
+{
+    public int Id { get; set; }
+    public int TotalId { get; set; }
+    public long DetailId { get; set; }
+    public DateTime? TotalUpdated { get; set; }
+
+    [MaxLength(25)]
+    public string? Note { get; set; }
+
+    public ReaderStatus Kind { get; set; }
 }

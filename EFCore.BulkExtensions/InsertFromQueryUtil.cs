@@ -48,22 +48,7 @@ internal static class InsertFromQueryUtil
         if (context.Database.ProviderName != SqlServerProviderName)
             throw new NotSupportedException($"InsertFromQuery is only supported on SQL Server, not with the provider '{context.Database.ProviderName}'.");
 
-        var targetType = typeof(TTarget);
-        var entityType = context.Model.FindEntityType(targetType)
-                         ?? throw new InvalidOperationException($"'{targetType.Name}' is not an entity type of {context.GetType().Name}.");
-        if (entityType.IsOwned() || entityType.BaseType != null || entityType.GetDirectlyDerivedTypes().Any())
-            throw new NotSupportedException($"InsertFromQuery does not support owned entity types or inheritance hierarchies ('{targetType.Name}').");
-
-        var tableName = entityType.GetTableName() ?? throw new NotSupportedException($"'{targetType.Name}' is not mapped to a table.");
-        var schemaName = entityType.GetSchema();
-        var storeObject = StoreObjectIdentifier.Table(tableName, schemaName);
-        var fullTableName = $"{Delimit(schemaName ?? "dbo")}.{Delimit(tableName)}"; // same default schema as the bulk operations
-
-        if (selector.Body is not MemberInitExpression memberInit || memberInit.NewExpression.Arguments.Count != 0 || memberInit.Type != targetType)
-            throw new NotSupportedException($"The selector must create the target entity with an object initializer, like 'x => new {targetType.Name} {{ Column = x.Value, ... }}'.");
-        if (memberInit.Bindings.Count == 0)
-            throw new NotSupportedException("The selector must assign at least one property.");
-
+        var target = MappedTable.For(context, typeof(TTarget));
         var parameter = selector.Parameters[0];
         var evaluatableExpressionFilter = context.GetService<IEvaluatableExpressionFilter>();
         var dbServer = SqlAdaptersMapping.DbServer(context);
@@ -72,28 +57,10 @@ internal static class InsertFromQueryUtil
         var selectValues = new List<string>();
         var parameters = new List<object>();
         var serverBindings = new List<MemberAssignment>();
-        var assignedProperties = new HashSet<IProperty>();
 
-        foreach (var binding in memberInit.Bindings)
+        foreach (var (property, column, assignment) in target.Assignments(selector.Body, dbServer, "selector"))
         {
-            if (binding is not MemberAssignment assignment)
-                throw new NotSupportedException($"'{targetType.Name}.{binding.Member.Name}' must be assigned a value; nested initializers are not supported.");
-
-            var property = entityType.FindProperty(assignment.Member.Name)
-                           ?? throw new NotSupportedException($"'{targetType.Name}.{assignment.Member.Name}' is not a mapped property.");
-            var columnName = property.GetColumnName(storeObject)
-                             ?? throw new NotSupportedException($"'{targetType.Name}.{property.Name}' is not mapped to a column of {fullTableName}.");
-
-            if (!assignedProperties.Add(property))
-                throw new NotSupportedException($"'{targetType.Name}.{property.Name}' is assigned more than once.");
-            if (dbServer.PropertyHasIdentity(property))
-                throw new NotSupportedException($"'{targetType.Name}.{property.Name}' is an identity column, which the database generates; remove it from the selector.");
-            if (property.GetComputedColumnSql() != null)
-                throw new NotSupportedException($"'{targetType.Name}.{property.Name}' is a computed column; remove it from the selector.");
-            if (property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate)
-                throw new NotSupportedException($"'{targetType.Name}.{property.Name}' is a row version, which the database generates; remove it from the selector.");
-
-            insertColumns.Add(Delimit(columnName));
+            insertColumns.Add(column);
 
             if (IsEvaluatedOnClient(assignment.Expression, parameter, evaluatableExpressionFilter, context.Model))
             {
@@ -106,7 +73,7 @@ internal static class InsertFromQueryUtil
             if (property.GetTypeMapping().Converter != null)
             {
                 throw new NotSupportedException(
-                    $"'{targetType.Name}.{property.Name}' has a value converter (enums have one too), and its value comes from the query: the query's SQL value " +
+                    $"'{target.ClrType.Name}.{property.Name}' has a value converter (enums have one too), and its value comes from the query: the query's SQL value " +
                     "would be inserted without the target's conversion. Assign it a value that does not depend on the query, or insert these rows another way.");
             }
 
@@ -140,7 +107,7 @@ internal static class InsertFromQueryUtil
                 "SQL Server would insert the value as stored, without the conversion EF Core applies when it reads it. Insert these rows another way.");
         }
 
-        var projection = Expression.Lambda<Func<TSource, TTarget>>(Expression.MemberInit(memberInit.NewExpression, serverBindings), parameter);
+        var projection = Expression.Lambda<Func<TSource, TTarget>>(Expression.MemberInit(((MemberInitExpression)selector.Body).NewExpression, serverBindings), parameter);
         var projectedQuery = source.Select(projection);
         EnsureTranslatedToSql(projectedQuery);
 
@@ -150,7 +117,7 @@ internal static class InsertFromQueryUtil
         var rowCount = new SqlParameter(RowCountParameterName, SqlDbType.Int) { Direction = ParameterDirection.Output };
         parameters.Add(rowCount);
 
-        var sql = $"INSERT INTO {fullTableName} ({string.Join(", ", insertColumns)})" + Environment.NewLine
+        var sql = $"INSERT INTO {target.FullTableName} ({string.Join(", ", insertColumns)})" + Environment.NewLine
                   + $"SELECT {string.Join(", ", selectValues)}" + Environment.NewLine
                   + "FROM (" + Environment.NewLine
                   + querySql + Environment.NewLine
@@ -161,6 +128,54 @@ internal static class InsertFromQueryUtil
         sql = sql.Replace("{", "{{").Replace("}", "}}");
 
         return (context, sql, parameters, rowCount);
+    }
+
+    /// <summary>An entity type that InsertFromQuery can write to: its table, and the columns an object initializer of it assigns.</summary>
+    internal sealed record MappedTable(Type ClrType, IEntityType EntityType, StoreObjectIdentifier StoreObject, string FullTableName)
+    {
+        public static MappedTable For(DbContext context, Type clrType)
+        {
+            var entityType = context.Model.FindEntityType(clrType)
+                             ?? throw new InvalidOperationException($"'{clrType.Name}' is not an entity type of {context.GetType().Name}.");
+            if (entityType.IsOwned() || entityType.BaseType != null || entityType.GetDirectlyDerivedTypes().Any())
+                throw new NotSupportedException($"InsertFromQuery does not support owned entity types or inheritance hierarchies ('{clrType.Name}').");
+
+            var tableName = entityType.GetTableName() ?? throw new NotSupportedException($"'{clrType.Name}' is not mapped to a table.");
+            var schemaName = entityType.GetSchema();
+            return new MappedTable(clrType, entityType, StoreObjectIdentifier.Table(tableName, schemaName), $"{Delimit(schemaName ?? "dbo")}.{Delimit(tableName)}");
+        }
+
+        /// <summary>The assignments of an object initializer creating this table's entity, each with its property and delimited column.</summary>
+        public IEnumerable<(IProperty Property, string Column, MemberAssignment Assignment)> Assignments(Expression body, IDbServer dbServer, string selectorName)
+        {
+            if (body is not MemberInitExpression memberInit || memberInit.NewExpression.Arguments.Count != 0 || memberInit.Type != ClrType)
+                throw new NotSupportedException($"The {selectorName} must create the {ClrType.Name} with an object initializer, like 'x => new {ClrType.Name} {{ Column = x.Value, ... }}'.");
+            if (memberInit.Bindings.Count == 0)
+                throw new NotSupportedException($"The {selectorName} must assign at least one property.");
+
+            var assigned = new HashSet<IProperty>();
+            foreach (var binding in memberInit.Bindings)
+            {
+                if (binding is not MemberAssignment assignment)
+                    throw new NotSupportedException($"'{ClrType.Name}.{binding.Member.Name}' must be assigned a value; nested initializers are not supported.");
+
+                var property = EntityType.FindProperty(assignment.Member.Name)
+                               ?? throw new NotSupportedException($"'{ClrType.Name}.{assignment.Member.Name}' is not a mapped property.");
+                var column = property.GetColumnName(StoreObject)
+                             ?? throw new NotSupportedException($"'{ClrType.Name}.{property.Name}' is not mapped to a column of {FullTableName}.");
+
+                if (!assigned.Add(property))
+                    throw new NotSupportedException($"'{ClrType.Name}.{property.Name}' is assigned more than once.");
+                if (dbServer.PropertyHasIdentity(property))
+                    throw new NotSupportedException($"'{ClrType.Name}.{property.Name}' is an identity column, which the database generates; remove it from the {selectorName}.");
+                if (property.GetComputedColumnSql() != null)
+                    throw new NotSupportedException($"'{ClrType.Name}.{property.Name}' is a computed column; remove it from the {selectorName}.");
+                if (property.IsConcurrencyToken && property.ValueGenerated == ValueGenerated.OnAddOrUpdate)
+                    throw new NotSupportedException($"'{ClrType.Name}.{property.Name}' is a row version, which the database generates; remove it from the {selectorName}.");
+
+                yield return (property, Delimit(column), assignment);
+            }
+        }
     }
 
     private static string Delimit(string identifier) => $"[{identifier.Replace("]", "]]")}]";
@@ -182,7 +197,7 @@ internal static class InsertFromQueryUtil
     /// (error 1033): an OrderBy/ThenBy reached from the outermost call through operators that keep the order. Take, Skip and any other
     /// operator end the search.
     /// </summary>
-    private static bool EndsWithOrdering(Expression expression)
+    internal static bool EndsWithOrdering(Expression expression)
     {
         while (expression is MethodCallExpression { Arguments.Count: > 0 } call)
         {
@@ -209,7 +224,7 @@ internal static class InsertFromQueryUtil
     /// and conversions that only add or remove <see cref="Nullable{T}"/> are dropped at the top of the value, where nothing is rebuilt around them.
     /// Used only for comparing: if the rewrite fails, the expression is compared as written.
     /// </summary>
-    private sealed class SameSqlCanonicalizer : ExpressionVisitor
+    internal sealed class SameSqlCanonicalizer : ExpressionVisitor
     {
         private static readonly SameSqlCanonicalizer Instance = new();
 
@@ -251,17 +266,17 @@ internal static class InsertFromQueryUtil
     /// parameter, contains no query, and every node passes the provider's <see cref="IEvaluatableExpressionFilter"/> (which keeps, for
     /// example, <c>DateTime.UtcNow</c> and <c>Guid.NewGuid()</c> on the server).
     /// </summary>
-    private static bool IsEvaluatedOnClient(Expression expression, ParameterExpression parameter, IEvaluatableExpressionFilter filter, IModel model)
+    internal static bool IsEvaluatedOnClient(Expression expression, ParameterExpression parameter, IEvaluatableExpressionFilter filter, IModel model)
     {
         var finder = new ClientEvaluationFinder(parameter, filter, model);
         finder.Visit(expression);
         return finder.IsEvaluatable;
     }
 
-    private static object? Evaluate(Expression expression) =>
+    internal static object? Evaluate(Expression expression) =>
         Expression.Lambda<Func<object?>>(Expression.Convert(expression, typeof(object))).Compile(preferInterpretation: true)();
 
-    private static DbParameter CreateParameter(IProperty property, string name, object? value)
+    internal static DbParameter CreateParameter(IProperty property, string name, object? value)
     {
         using var command = new SqlCommand();
         return property.GetRelationalTypeMapping().CreateParameter(command, name, value, property.IsNullable);
@@ -271,12 +286,12 @@ internal static class InsertFromQueryUtil
     /// EF Core evaluates on the client whatever part of a final projection it cannot translate, and leaves it out of the SQL.
     /// It refuses a set operation over such a projection, so compiling (not running) one shows whether it translated entirely.
     /// </summary>
-    private static void EnsureTranslatedToSql<TTarget>(IQueryable<TTarget> projectedQuery)
+    internal static void EnsureTranslatedToSql(IQueryable projectedQuery)
     {
-        var check = projectedQuery.Concat(projectedQuery);
+        var check = Expression.Call(typeof(Queryable), nameof(Queryable.Concat), [projectedQuery.ElementType], projectedQuery.Expression, projectedQuery.Expression);
         try
         {
-            check.Provider.Execute<IEnumerable>(check.Expression);
+            projectedQuery.Provider.Execute<IEnumerable>(check);
         }
         catch (InvalidOperationException ex)
         {
@@ -290,7 +305,7 @@ internal static class InsertFromQueryUtil
     /// order (Where, OrderBy, Any, join keys, ...) are skipped. EF Core's default enum-to-number converter is allowed: an enum
     /// target needs a converter and is refused anyway, and a number or a string derived from the enum is computed by EF Core.
     /// </summary>
-    private sealed class ConvertedValueFinder(IModel model) : ExpressionVisitor
+    internal sealed class ConvertedValueFinder(IModel model) : ExpressionVisitor
     {
         private static readonly HashSet<string> FilterMethods =
         [

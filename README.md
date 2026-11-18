@@ -143,6 +143,22 @@ int inserted = context.Details
   SQL Server would copy it as stored. Filtering or ordering on such a property is fine.
   Owned and inherited entity types, and a query ending with `OrderBy`, are not supported.
 
+With a second selector, every inserted row also writes a row into another entity's table, from the inserted row (its generated id too)
+and from the query's row, which the inserted row may not keep:
+```C#
+await context.StagedRows
+    .Where(s => s.BatchId == batchId)
+    .InsertFromQueryAsync(
+        s => new Detail { Account = s.Account, Amount = s.Amount ?? 0 },
+        (s, detail) => new ImportLog { DetailId = detail.Id, SourceLine = s.LineNumber, BatchId = batchId },
+        cancellationToken);
+```
+- Each output value is a property of the inserted row as it is (`detail.Id`), a value from the query's row only, or a value that depends on neither.
+- The rows are inserted with a `MERGE`, whose `OUTPUT` writes the output rows into a temp table, and an `INSERT` copies them into the output table,
+  so its triggers fire and its foreign keys are checked. The two inserts succeed or fail together: in a transaction of their own, or, inside
+  the caller's, behind a savepoint that a failure rolls back to (unless `XACT_ABORT ON` has doomed the caller's transaction).
+  A distributed transaction allows no savepoint, so inside one the call fails before inserting anything.
+
 ## Performances
 Following are performances (in seconds)
 * For SQL Server (v. 2019):
