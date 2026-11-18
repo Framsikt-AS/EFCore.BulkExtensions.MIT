@@ -169,6 +169,25 @@ public class InsertFromQueryOutputTests : IClassFixture<InsertFromQueryOutputTes
         Assert.Equal((0, 0), (await db.QueryTotals.CountAsync(), await db.QueryTotalSources.CountAsync()));
     }
 
+    /// <remarks>
+    /// With XACT_ABORT OFF a failed statement leaves the caller's transaction open, so a caller that catches the error can still commit.
+    /// </remarks>
+    [Fact]
+    public async Task InACallersTransaction_AFailedOutputInsertUndoesTheTargetRowsToo()
+    {
+        using var db = await CreateContextAsync();
+        await SeedDetailsAsync(db);
+
+        await using (var transaction = await db.Database.BeginTransactionAsync())
+        {
+            var exception = await Assert.ThrowsAsync<SqlException>(() => db.QueryDetails.InsertFromQueryAsync(ToTotal(), (d, total) => new QueryTotalSource { TotalId = -(int)d.Id, DetailId = d.Id }));
+            Assert.Equal(547, exception.Number);
+            await transaction.CommitAsync();
+        }
+
+        Assert.Equal((0, 0), (await db.QueryTotals.CountAsync(), await db.QueryTotalSources.CountAsync()));
+    }
+
     /// <remarks>Without a transaction of the caller's, a failing output insert must not leave the target rows behind.</remarks>
     [Fact]
     public async Task WithoutATransaction_BothInsertsAreUndoneTogether()

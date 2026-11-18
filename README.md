@@ -155,7 +155,8 @@ await context.StagedRows
 ```
 - Each output value is a property of the inserted row as it is (`detail.Id`), a value from the query's row only, or a value that depends on neither.
 - The rows are inserted with a `MERGE`, whose `OUTPUT` writes the output rows into a temp table, and an `INSERT` copies them into the output table,
-  so its triggers fire and its foreign keys are checked. Without a transaction of the caller's, the two inserts run in one of their own.
+  so its triggers fire and its foreign keys are checked. The two inserts succeed or fail together: in a transaction of their own, or, inside
+  the caller's, behind a savepoint that a failure rolls back to (unless `XACT_ABORT ON` has doomed the caller's transaction).
 
 ## Performances
 Following are performances (in seconds)
