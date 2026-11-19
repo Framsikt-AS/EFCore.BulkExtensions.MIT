@@ -269,9 +269,9 @@ public class BulkConfig
     /// </summary>
     /// <value>
     ///     <c>Default, KeepIdentity, CheckConstraints, TableLock, KeepNulls, FireTriggers, UseInternalTransaction</c>
-    ///     Default value is <c>TableLock</c> to prevent deadlocks and improve performance, similar to Z.EntityFramework.Extensions behavior.
+    ///     Default value is <c>Default</c> (no options). <c>TableLock</c> locks the whole table until the operation's transaction commits.
     /// </value>
-    public Microsoft.Data.SqlClient.SqlBulkCopyOptions SqlBulkCopyOptions { get; set; } = SqlBulkCopyOptions.TableLock; // is superset of System.Data.SqlClient.SqlBulkCopyOptions, gets converted to the desired type
+    public Microsoft.Data.SqlClient.SqlBulkCopyOptions SqlBulkCopyOptions { get; set; } // is superset of System.Data.SqlClient.SqlBulkCopyOptions, gets converted to the desired type
 
     /// <summary>
     ///     List of column order hints for improving performance.

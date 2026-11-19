@@ -48,12 +48,12 @@ public class EFCoreBulkTestAtypical : IAssemblyFixture<DbAssemblyFixture>
     }
 
     [Fact]
-    public void BulkConfigDefaultsSqlBulkCopyOptionsToTableLock()
+    public void BulkConfigDefaultsSqlBulkCopyOptionsToDefault()
     {
-        // Test that the default SqlBulkCopyOptions is TableLock to prevent deadlocks
+        // A table lock holds the whole table until the bulk operation's transaction commits.
         var config = new BulkConfig();
 
-        Assert.Equal(Microsoft.Data.SqlClient.SqlBulkCopyOptions.TableLock, config.SqlBulkCopyOptions);
+        Assert.Equal(Microsoft.Data.SqlClient.SqlBulkCopyOptions.Default, config.SqlBulkCopyOptions);
     }
 
     [Theory]
