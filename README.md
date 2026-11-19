@@ -8,7 +8,6 @@ I forked the project at commit [5bf938a422](https://github.com/borisdj/EFCore.Bu
 ### Why choose this fork instead of original version?
 - You need MIT version (obviously).
 - You care about **SetOutputIdentity**. In this fork I fixed multiple bugs around setting output identity and added tests for it.
-- **Safer defaults**: `SqlBulkCopyOptions.TableLock` is enabled by default to prevent deadlocks and improve performance (similar to Z.EntityFramework.Extensions).
 - This fork fixes issues not fixed in original:
   - [Fix Insert New Only](https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/45)
   - [Fix Output Identity not set when column is null](https://github.com/videokojot/EFCore.BulkExtensions.MIT/issues/46)
@@ -349,10 +348,9 @@ _ Also in some [sql collation](https://github.com/borisdj/EFCore.BulkExtensions/
 
 **SqlBulkCopyOptions** is Enum (only for SqlServer) with [[Flags]](https://stackoverflow.com/questions/8447/what-does-the-flags-enum-attribute-mean-in-c) attribute which enables specifying one or more options:<br>
 *Default, KeepIdentity, CheckConstraints, TableLock, KeepNulls, FireTriggers, UseInternalTransaction*<br>
-**Default value is `TableLock`** which prevents deadlocks and improves performance by acquiring an exclusive table lock during bulk operations (similar to Z.EntityFramework.Extensions behavior).<br>
-To allow concurrent access during bulk operations, you can explicitly set it to Default: `var bulkConfig = new BulkConfig { SqlBulkCopyOptions = SqlBulkCopyOptions.Default };`<br>
-If need to set Identity PK in memory, Not let DB do the autoincrement, then combine with **KeepIdentity**:<br>
-`var bulkConfig = new BulkConfig { SqlBulkCopyOptions = SqlBulkCopyOptions.TableLock | SqlBulkCopyOptions.KeepIdentity };`<br>
+**Default value is `Default`** (no options): the library does not ask for a table lock, so each statement takes row or page locks on what it writes, unless SQL Server escalates them or the table has the `table lock on bulk load` option set. **TableLock** locks the table `SqlBulkCopy` writes to until the operation's transaction commits: the target for a plain insert, but a temporary table for `BulkInsertOrUpdate` and `SetOutputIdentity`, whose `MERGE` locks the target separately. Use it only when nothing else writes to that table meanwhile.<br>
+If need to set Identity PK in memory, Not let DB do the autoincrement, then need to use **KeepIdentity**:<br>
+`var bulkConfig = new BulkConfig { SqlBulkCopyOptions = SqlBulkCopyOptions.KeepIdentity };`<br>
 Useful for example when copying from one Db to another.
 
 **SetSynchronizeFilter<T>** A method that receives and sets expresion filter on entities to delete when using BulkInsertOrUpdateOrDelete.<br>
