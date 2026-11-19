@@ -348,7 +348,7 @@ _ Also in some [sql collation](https://github.com/borisdj/EFCore.BulkExtensions/
 
 **SqlBulkCopyOptions** is Enum (only for SqlServer) with [[Flags]](https://stackoverflow.com/questions/8447/what-does-the-flags-enum-attribute-mean-in-c) attribute which enables specifying one or more options:<br>
 *Default, KeepIdentity, CheckConstraints, TableLock, KeepNulls, FireTriggers, UseInternalTransaction*<br>
-**Default value is `Default`** (no options): each statement locks only the rows it writes, unless SQL Server escalates the locks. **TableLock** locks the whole table until the operation's transaction commits: use it only when nothing else writes to the table meanwhile.<br>
+**Default value is `Default`** (no options): the library does not ask for a table lock, so each statement takes row or page locks on what it writes, unless SQL Server escalates them or the table has the `table lock on bulk load` option set. **TableLock** locks the whole table until the operation's transaction commits: use it only when nothing else writes to the table meanwhile.<br>
 If need to set Identity PK in memory, Not let DB do the autoincrement, then need to use **KeepIdentity**:<br>
 `var bulkConfig = new BulkConfig { SqlBulkCopyOptions = SqlBulkCopyOptions.KeepIdentity };`<br>
 Useful for example when copying from one Db to another.
